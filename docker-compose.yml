@@ -1,0 +1,47 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: webvolunteer-app
+    volumes:
+      - ./:/var/www/html
+    environment:
+      DB_HOST: db
+      DB_DATABASE: webvolunteer
+      DB_USERNAME: webvolunteer
+      DB_PASSWORD: secret
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: nginx:alpine
+    container_name: webvolunteer-web
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+
+  db:
+    image: postgres:16-alpine
+    container_name: webvolunteer-db
+    environment:
+      POSTGRES_DB: webvolunteer
+      POSTGRES_USER: webvolunteer
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webvolunteer"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
