@@ -1,0 +1,4064 @@
+# Review package: 4b825dc642cb6eb9a060e54bf8d69288fbee4904..e713235214c6c6245c9d5727498aed8b09672b8d
+
+## Commits
+e713235 docs: pre-coding spec + phase 0 plan
+
+## Files changed
+ .gitignore                                         |    1 +
+ API.md                                             |   85 +
+ ARCHITECTURE.md                                    |  146 ++
+ DATABASE.md                                        |  267 +++
+ DEPLOYMENT.md                                      |   99 +
+ PRD.md                                             |  159 ++
+ README.md                                          |   86 +
+ SECURITY.md                                        |  182 ++
+ TESTING.md                                         |  106 +
+ .../plans/2026-09-14-phase0-dev-scaffold.md        |  474 ++++
+ webvolunteer-prompt.md                             | 2372 ++++++++++++++++++++
+ 11 files changed, 3977 insertions(+)
+
+## Diff
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..7a95436
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1 @@
++.superpowers/
+diff --git a/API.md b/API.md
+new file mode 100644
+index 0000000..8ca7c9f
+--- /dev/null
++++ b/API.md
+@@ -0,0 +1,85 @@
++# API
++
++Status: **kontrak desain**. API dibangun setelah fondasi web (Phase 1–4)
++stabil. Sanctum diadopsi saat itu (YAGNI sampai sini). Dokumen ini mengunci
++struktur, konvensi, dan keamanan agar implementasi tinggal mengikuti.
++
++## 1. Struktur Endpoint
++
++```text
++/api/auth/*                         # login, logout, refresh, me
++/api/organizations/*                # profil org (scoped membership)
++/api/events/*                       # public list/detail + scoped manage
++/api/events/{event}/divisions/*
++/api/events/{event}/roles/*
++/api/events/{event}/shifts/*
++/api/events/{event}/registrations/*
++/api/events/{event}/assignments/*
++/api/events/{event}/attendance/*
++/api/notifications/*                # milik sendiri
++/api/reports/*                      # event-scoped, permission report.export
++/api/certificates/verify/{no}       # publik, data minimal
++/api/admin/*                        # super_admin only
++```
++
++`{event}` selalu di-resolve dalam scope organisasi pemanggil; di luar
++scope → 404. Tidak ada endpoint yang menerima `organization_id`/
++`event_id` dari body sebagai sumber kebenaran — scope berasal dari
++server context (token + path binding).
++
++## 2. Auth & Keamanan per Endpoint
++
++- Semua endpoint (kecuali list/detail publik + verifikasi sertifikat):
++  `auth:sanctum` + `abilities` minimal + Policy + throttle.
++- Throttle default `60/min`; sensitif lebih ketat: auth `5/mnt`,
++  registration submit `10/mnt`, QR scan `30/mnt`, export `5/jam`,
++  broadcast `5/jam`.
++- Validasi via Form Request; pagination wajib (`per_page` max 100);
++  tanpa `SELECT *` — resource hanya memuat field yang dibutuhkan
++  (public vs private resource terpisah).
++- Idempotency: `Idempotency-Key` header pada POST registration,
++  check-in/out, export. Key sama → respons record existing (200),
++  bukan duplikat.
++
++## 3. Konvensi Response
++
++Sukses list:
++
++```json
++{ "data": [...], "meta": { "current_page": 1, "total": 250 } }
++```
++
++Sukses mutasi: `201 + resource` (create), `200 + resource` (update),
++`200 + { "message": "..." }` (aksi). Error aman:
++
++| Kode | Arti |
++|---|---|
++| 400 | Bad request (validasi lolos tapi bisnis menolak — gunakan 422 bila validasi) |
++| 401 | Unauthenticated |
++| 403 | Forbidden (dalam scope tapi tak berhak) |
++| 404 | Not found / di luar scope (tidak membocorkan) |
++| 409 | Konflik (duplikat, replay QR, quota penuh) |
++| 422 | Validation error (`{ "errors": { "field": [...] } }`) |
++| 429 | Rate limited |
++| 500 | Generic + `error_id` (tanpa trace/SQL/path/secret) |
++
++## 4. Contoh Kontrak (ringkas)
++
++- `GET /api/events?category=&city=&date=&q=` → publik, paginated,
++  field publik saja.
++- `POST /api/events/{event}/registrations` → auth volunteer,
++  body: `role_id` + `answers[]`; respons 201 (Pending) / 409 (duplikat).
++- `POST /api/events/{event}/registrations/{id}/accept` → auth staff
++  + `registration.review`; 200 / 409 (quota penuh → sarankan waitlist).
++- `POST /api/events/{event}/attendance/check-in` → auth volunteer
++  (QR token) atau staff + `attendance.manage`; validasi time window.
++- `GET /api/certificates/verify/{no}` → publik: event, nama, role,
++  tanggal selesai. Tanpa kontak/data privat.
++- `POST /api/events/{event}/exports` → staff + `report.export`;
++  respons 202 + job ID; unduh setelah job selesai (link signed, expiry).
++
++## 5. Versioning & Evolusi
++
++Prefix `/api/v1/` saat rilis pertama; breaking change → `/v2/` +
++deprecation window. Web/Livewire dan API memakai service yang sama —
++tidak ada duplikasi business logic.
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+new file mode 100644
+index 0000000..8189a82
+--- /dev/null
++++ b/ARCHITECTURE.md
+@@ -0,0 +1,146 @@
++# ARCHITECTURE
++
++## 1. Gaya Arsitektur: Modular Monolith Ringan
++
++Satu aplikasi Laravel, tanpa microservices. Modul dipisahkan per domain
++(`Identity`, `Tenancy`, `Events`, `Recruitment`, `Operations`, `Comms`,
++`Credentials`, `Reporting`, `Platform`) lewat namespace service + policy,
++bukan lewat network boundary.
++
++```text
++Browser
++  ↓ HTTPS
++Nginx → PHP-FPM → Laravel 13
++  ├── Routes (web.php / api.php)
++  ├── Controllers (tipis: auth, validasi, panggil service)
++  ├── Livewire Components + Blade + Alpine.js
++  ├── Form Requests (validasi + authorize)
++  ├── Policies (otorisasi per resource)
++  ├── Services (seluruh business logic)
++  ├── Jobs + Notifications (async)
++  └── Models (Eloquent, relasi + scope)
++        ↓
++  PostgreSQL 16+ (sumber kebenaran)
++```
++
++Redis opsional: ditambahkan hanya untuk queue/cache/session saat traffic
++menuntut. Abstraksi Laravel (`Queue`, `Cache`, `Session`) membuat
++perpindahan storage tanpa mengubah business logic.
++
++## 2. Keputusan Stack (dengan alasan)
++
++| Pilihan | Alasan |
++|---|---|
++| Laravel 13 + PHP 8.4 | Versi LTS aktif; typed code, atribut validasi, performa |
++| Blade + Livewire 4.4+ + Alpine.js | Server-rendered, hemat VPS; reaktivitas tanpa SPA |
++| Tailwind CSS 4 | Utility-first, build ringan |
++| PostgreSQL (primary) | FK, unique parsial, check constraint, transaksi, `FOR UPDATE` |
++| Spatie Permission | RBAC matang; dilengkapi membership + scope (bukan global role saja) |
++| Sanctum **ditunda** | YAGNI — dibangun saat API eksternal dibutuhkan; kontrak di [API.md](API.md) |
++| Pest + Pint + PHPStan | Test ekspresif, format PSR-12, static analysis |
++
++Versi terverifikasi saat penulisan: Laravel 13 (rilis 17 Mar 2026, butuh
++PHP 8.3+), Livewire v4.4.4 stabil. Verifikasi ulang saat scaffold Phase 0.
++
++## 3. Model Tenancy: Shared Schema + Ownership Chain
++
++Satu database, satu schema. Setiap resource penting membawa rantai
++kepemilikan hingga tenant:
++
++```text
++User → Organization → Event → Division → Role → Shift
++User → Registration → Assignment → Attendance
++```
++
++Penegakan tiga lapis (semuanya backend):
++
++1. **Scoped query** — setiap query resource difilter `organization_id` /
++   `event_id` dari server context, bukan dari parameter client.
++2. **Policy** — `EventPolicy`, `RegistrationPolicy`, dst. memeriksa
++   membership + permission + ownership chain.
++3. **Route model binding scoped** — `events/{event}` di-resolve dalam
++   lingkup organisasi user; di luar scope → 404 (tidak membocorkan
++   keberadaan resource) atau 403 sesuai kebijakan (lihat [SECURITY.md](SECURITY.md)).
++
++## 4. RBAC + Membership + Scope
++
++- Role global Spatie hanya untuk `super_admin`.
++- Akses tenant berasal dari `organization_members`:
++  `Owner` (penuh 1 org) dan `Staff` (permission configurable:
++  `event.update`, `registration.review`, `volunteer.assign`,
++  `attendance.read`, `announcement.create`, `report.export`, ...).
++- Permission Spatie memberi *kemampuan*; membership memberi *cakupan*.
++  Keduanya harus lolos: `can('registration.review')` **dan**
++  `belongsToOrganization($event->organization_id)`.
++
++## 5. Service Layer (controller tetap tipis)
++
++Seluruh aturan bisnis di service; controller hanya: auth → Form Request →
++panggil service → response. Tidak ada business logic di Blade/Livewire view.
++
++| Service | Tanggung jawab |
++|---|---|
++| `EventService` | CRUD event, state transition tervalidasi |
++| `RegistrationService` | Submit, review, accept/reject/waitlist, withdraw |
++| `QuotaService` | Counter atomik accept/release (satu-satunya penulis `accepted_count`) |
++| `AssignmentService` | Assign/reassign + history |
++| `AttendanceService` | Check-in/out + validasi QR/time window |
++| `CertificateService` | Eligibility + generate + verifikasi |
++| `NotificationService` | Dispatch async multi-channel |
++| `ExportService` | Export scoped + rate limit + queue |
++| `AuditLogService` / `SecurityService` | Pencatatan audit & security event |
++
++Livewire component memanggil service yang sama — tidak ada duplikasi logic
++antara web, Livewire, dan (nanti) API.
++
++## 6. Abstraksi Infrastruktur
++
++- **Queue**: `QUEUE_CONNECTION=database` (MVP) → `redis` tanpa ubah job.
++  Untuk: email, notifikasi, sertifikat, export besar, broadcast, image processing.
++- **Storage**: disk `local` → `s3`/R2 via `Storage` facade. Nama file acak,
++  direktori non-executable, tanpa path dari client.
++- **Cache**: hanya data publik (daftar event, detail event, profil organizer)
++  dengan key ber-scope (`events:list:{filter-hash}`, `event:{id}` + invalidasi
++  saat update). Data privat tidak di-cache lintas user.
++- **Session**: cookie `Secure + HttpOnly + SameSite=Lax`, rotasi saat login,
++  invalidasi saat logout. Tanpa token auth di `localStorage`.
++
++## 7. Struktur Direktori (rencana scaffold)
++
++```text
++app/
++├── Http/Controllers/      # tipis: Auth, Public, Organizer/*, Admin/*, Api/*
++├── Livewire/              # Public/, Volunteer/, Organizer/, Admin/
++├── Http/Requests/         # Form Request per aksi (authorize + rules)
++├── Policies/              # satu policy per resource tenant-scoped
++├── Services/              # domain services (lihat §5)
++├── Jobs/                  # queued jobs
++├── Notifications/         # database/mail (+channel lain menyusul)
++├── Models/                # dengan scope: forOrganization(), forEvent(), active()
++└── Support/               # Idempotency, QR token, sanitizer, export writer
++routes/
++├── web.php                # public, volunteer, organizer, admin
++└── api.php                # dibangun setelah fondasi web (lihat API.md)
++```
++
++## 8. Alur Request Kritis (contoh: accept registration)
++
++```text
++POST organizer/events/{event}/registrations/{reg}/accept
++ → auth → throttle → Form Request (authorize: policy + scope)
++ → RegistrationService::accept() dalam DB::transaction():
++     1. lock event_roles row (FOR UPDATE)
++     2. cek status valid (Under Review/Waitlisted) + quota tersedia
++     3. update registration → Accepted; accepted_count++
++     4. tulis registration_status_histories + audit log
++     5. dispatch notifikasi (queue)
++ → response redirect + flash
++```
++
++Kegagalan di langkah mana pun → rollback penuh.
++
++## 9. Prinsip Kualitas Kode
++
++PSR-12 (Pint), strict typing bila sesuai, Form Request untuk semua input,
++Policy untuk semua resource, penamaan jelas, tanpa god class/controller,
++tanpa permission/tenant/event ID hardcoded, tanpa logic bisnis di Blade.
+diff --git a/DATABASE.md b/DATABASE.md
+new file mode 100644
+index 0000000..38808a1
+--- /dev/null
++++ b/DATABASE.md
+@@ -0,0 +1,267 @@
++# DATABASE
++
++PostgreSQL 16+ sebagai primary dan satu-satunya sumber kebenaran.
++Manfaatkan: foreign key, unique (termasuk parsial), check constraint,
++index, transaction, `SELECT ... FOR UPDATE`.
++
++Konvensi: `id` bigint PK, `timestamps`, soft deletes (`deleted_at`) untuk
++tabel operasional/audit penting, `ulid`/string untuk token publik
++(sertifikat, QR) — bukan sebagai pengganti otorisasi.
++
++## 1. ERD
++
++```mermaid
++erDiagram
++    users ||--o{ organization_members : "member of"
++    organizations ||--o{ organization_members : has
++    organizations ||--o{ events : owns
++    users ||--o{ volunteer_profiles : "has one"
++    users ||--o{ registrations : submits
++    events ||--o{ event_divisions : has
++    events ||--o{ event_roles : has
++    event_divisions ||--o{ event_roles : contains
++    events ||--o{ event_shifts : schedules
++    event_roles ||--o{ event_shifts : staffed_by
++    events ||--o{ event_custom_fields : defines
++    event_custom_fields ||--o{ event_custom_field_options : has
++    events ||--o{ registrations : receives
++    event_roles ||--o{ registrations : applied_for
++    registrations ||--o{ registration_answers : has
++    registrations ||--o{ registration_status_histories : tracks
++    registrations ||--o{ assignments : yields
++    event_shifts ||--o{ assignments : scheduled_on
++    assignments ||--o{ assignment_histories : tracks
++    assignments ||--o{ attendances : records
++    events ||--o{ announcements : publishes
++    events ||--o{ artists : books
++    artists ||--o{ artist_liaisons : handled_by
++    events ||--o{ incidents : reports
++    events ||--o{ lost_found_items : logs
++    events ||--o{ certificates : issues
++    certificates ||--o{ certificate_verifications : verifies
++    users ||--o{ audit_logs : "acted by"
++    users ||--o{ security_logs : "triggered by"
++
++    users {
++        bigint id PK
++        string name
++        string email UK
++        string password_hash
++        timestamp email_verified_at
++        string status
++    }
++    organizations {
++        bigint id PK
++        string name
++        string slug UK
++        string status
++    }
++    organization_members {
++        bigint id PK
++        bigint organization_id FK
++        bigint user_id FK
++        string role
++        string status
++        timestamptz joined_at
++    }
++    events {
++        bigint id PK
++        bigint organization_id FK
++        string name
++        string slug
++        string category
++        string status
++        timestamptz start_at
++        timestamptz end_at
++        timestamptz registration_start_at
++        timestamptz registration_end_at
++        int capacity
++        jsonb branding
++    }
++    event_divisions {
++        bigint id PK
++        bigint event_id FK
++        string name
++        bigint supervisor_id FK
++        string status
++    }
++    event_roles {
++        bigint id PK
++        bigint event_id FK
++        bigint division_id FK
++        string name
++        int quota
++        int accepted_count
++        string status
++    }
++    event_shifts {
++        bigint id PK
++        bigint event_id FK
++        bigint division_id FK
++        bigint role_id FK
++        timestamptz start_at
++        timestamptz end_at
++        int capacity
++        string status
++    }
++    registrations {
++        bigint id PK
++        bigint user_id FK
++        bigint event_id FK
++        bigint role_id FK
++        string status
++        timestamptz submitted_at
++        bigint reviewed_by FK
++        timestamptz reviewed_at
++        text rejection_reason
++        string idempotency_key UK
++    }
++```
++
++## 2. Tabel per Domain
++
++### Identity & Tenancy
++
++- **users**: `name`, `email` (unique, citext disarankan), `password`
++  (hash-only), `email_verified_at`, `status`
++  (`active`, `suspended`), `last_login_at`. Index: `email`, `status`.
++- **organizations**: `name`, `slug` (unique global), `logo_path`,
++  `description`, `email`, `phone`, `website`, `social_links` (jsonb),
++  `status` (`active`, `suspended`, `archived`), soft deletes.
++- **organization_members**: `organization_id`, `user_id`, `role`
++  (`owner`, `staff` — check constraint), `status`, `joined_at`.
++  Unique `(organization_id, user_id)`. Index: `(user_id)`.
++- **Spatie** (standar package): `roles`, `permissions`,
++  `model_has_roles`, `model_has_permissions`, `role_has_permissions`.
++  Role global hanya `super_admin`; permission granular
++  (`event.update`, `registration.review`, ...).
++
++### Events
++
++- **events**: kolom §ERD + `venue`, `address`, `latitude`, `longitude`,
++  `timezone`, `banner_path`, `thumbnail_path`, `contact` (jsonb),
++  `terms`, `privacy_notice`, `published_at`, soft deletes.
++  Unique `(organization_id, slug)`. Index: `(organization_id, status)`,
++  `(status, start_at)`, GIN `branding` bila difilter.
++  Check: `end_at > start_at`,
++  `registration_start_at < registration_end_at`.
++- **event_divisions**: `event_id`, `name`, `description`,
++  `supervisor_id → users`, `status`. Unique `(event_id, name)`.
++- **event_roles**: `event_id`, `division_id`, `name`, `description`,
++  `quota`, **`accepted_count` default 0**, `requirements` (jsonb),
++  `location`, `status`. Unique `(event_id, division_id, name)`.
++  Check: `quota >= 0`, `accepted_count >= 0`, `accepted_count <= quota`.
++- **event_shifts**: `event_id`, `division_id`, `role_id`, `start_at`,
++  `end_at`, `location`, `capacity`, `supervisor_id → users`, `status`.
++  Check: `end_at > start_at`, `capacity >= 0`.
++  Index: `(event_id, start_at)`, `(role_id, start_at)`.
++- **event_custom_fields**: `event_id`, `label`, `type` (check: 13 tipe
++  di PRD §7), `required`, `placeholder`, `validation_rule`,
++  `sort_order`, `is_active`.
++- **event_custom_field_options**: `field_id`, `label`, `value`,
++  `sort_order`. Untuk select/radio/checkbox/multi-select.
++
++### Volunteer & Recruitment
++
++- **volunteer_profiles**: `user_id` (unique), `full_name`, `phone`,
++  `city`, `education`, `experience`, `skills` (jsonb/text[]),
++  `portfolio_url`, `social_links` (jsonb), `availability` (jsonb),
++  `visibility` (`public`, `organizers_only`, `private`).
++  Data minimization: `date_of_birth` & emergency contact hanya bila
++  event mensyaratkan (kolom nullable, diakses via policy).
++- **registrations**: kolom §ERD + `reviewed_by → users`.
++  **Unique parsial** mencegah duplikat aktif:
++  `UNIQUE (user_id, event_id) WHERE status IN
++  ('pending','under_review','accepted','waitlisted')`.
++  Index: `(event_id, status)`, `(role_id, status)`, `(user_id)`.
++- **registration_answers**: `registration_id`, `field_id`, `value_text`,
++  `value_jsonb` (untuk multi/file), `file_path` (bila tipe file).
++  Unique `(registration_id, field_id)`.
++- **registration_status_histories**: `registration_id`, `from_status`,
++  `to_status`, `changed_by → users`, `reason`, `created_at`.
++  Append-only (tanpa update/delete oleh aplikasi).
++
++### Operations
++
++- **assignments**: `registration_id` (unique — satu assignment aktif per
++  registration), `user_id`, `event_id`, `division_id`, `role_id`,
++  `shift_id` (nullable), `location`, `supervisor_id → users`,
++  `status` (`assigned`, `reassigned`, `confirmed`, `completed`,
++  `cancelled`), soft deletes. Index: `(event_id, status)`,
++  `(user_id, event_id)`, `(shift_id)`.
++- **assignment_histories**: `assignment_id`, `from_status`, `to_status`,
++  `changed_by`, `note`, `created_at`. Append-only.
++- **attendances**: `assignment_id`, `shift_id`, `event_id`, `user_id`,
++  `checked_in_at`, `checked_out_at`, `method` (`qr`, `manual`),
++  `status` (`present`, `late`, `absent`), `idempotency_key` (unique).
++  Unique `(assignment_id, shift_id)` — satu record per pasangan.
++  Index: `(event_id, checked_in_at)`, `(user_id, event_id)`.
++- **attendance_logs**: `attendance_id`, `action` (`check_in`,
++  `check_out`, `void`), `actor_id`, `ip`, `user_agent`, `created_at`.
++  Append-only.
++
++### Komunikasi
++
++- **announcements**: `event_id`, `author_id → users`,
++  `target_type` (`event`, `division`, `role`, `shift`, `individual`),
++  `target_id` (nullable), `title`, `body`, `published_at`, `expires_at`.
++  Index: `(event_id, published_at)`.
++- **notifications**: standar Laravel (`notifiables` polymorphic, `data`
++  jsonb, `read_at`). Channel database+mail dulu.
++
++### Modul Event Musik
++
++- **artists**: `event_id`, `name`, `arrival_at`, `departure_at`, `venue`,
++  `transport` (jsonb), `requirements` (jsonb), `status`.
++- **artist_liaisons**: `artist_id`, `user_id` (liaison), `note`.
++  Unique `(artist_id, user_id)`. Akses dibatasi policy
++  (liaison ter-assign + staff ber-permission).
++- **incidents**: `event_id`, `category` (check: medical, security, crowd,
++  technical, lost_found, other), `priority` (check: low–critical),
++  `location`, `description`, `attachment_path`, `reporter_id → users`,
++  `assignee_id → users`, `status` (check: open→…→closed), soft deletes.
++  Index: `(event_id, status)`, `(event_id, priority)`.
++- **lost_found_items**: `event_id`, `kind` (`lost`, `found`), `item_name`,
++  `description`, `photo_path`, `location`, `occurred_at`,
++  `reporter_id → users`, `handler_id → users`, `status`.
++
++### Kredensial & Logging
++
++- **certificates**: `event_id`, `user_id`, `registration_id` (unique),
++  `certificate_no` (unique, mis. `WV-2026-XXXXXX`), `issued_at`,
++  `revoked_at`, `qr_token_hash` (unique). Unique `(event_id, user_id)`.
++- **certificate_verifications**: `certificate_id`, `verified_at`, `ip`,
++  `user_agent`. Append-only (jejak verifikasi publik).
++- **audit_logs**: `actor_id`, `organization_id` (nullable),
++  `event_id` (nullable), `action`, `resource_type`, `resource_id`,
++  `old_values`/`new_values` (jsonb), `ip`, `user_agent`, `request_id`,
++  `created_at`. Append-only. Index: `(event_id, created_at)`,
++  `(actor_id, created_at)`, `(action)`.
++- **security_logs**: `actor_id` (nullable), `type` (`failed_login`,
++  `account_locked`, `forbidden_access`, `rate_limit_exceeded`, ...),
++  `ip`, `user_agent`, `context` (jsonb, tanpa secret), `created_at`.
++  Append-only. Index: `(type, created_at)`, `(ip, created_at)`.
++
++## 3. Transaction Wajib
++
++Registration submit, accept/reject/waitlist, assign/reassign, quota
++update, cancel registration, check-in/out, bulk action, generate
++certificate. Pola: `DB::transaction()` + lock baris quota
++(`lockForUpdate()` pada `event_roles`) di dalam `QuotaService`.
++Kegagalan → rollback penuh, state konsisten.
++
++## 4. Idempotency
++
++`registrations.idempotency_key` (UUID dari client per submit, unique)
++dan `attendances.idempotency_key` per aksi check-in/out.
++Double-click/retry dengan key sama → kembalikan record existing,
++tanpa duplikat. Key kedaluwarsa dibersihkan via scheduler.
++
++## 5. Retensi & Soft Delete
++
++Soft delete: organizations, events, assignments, incidents.
++Append-only (tanpa delete aplikasi): status histories, attendance_logs,
++audit_logs, security_logs, certificate_verifications.
++Kebijakan retensi configurable (registration history, attendance, log,
++file upload); hard delete hanya via perintah artisan teraudit oleh
++Super Admin.
+diff --git a/DEPLOYMENT.md b/DEPLOYMENT.md
+new file mode 100644
+index 0000000..50bfc09
+--- /dev/null
++++ b/DEPLOYMENT.md
+@@ -0,0 +1,99 @@
++# DEPLOYMENT
++
++## 1. Topologi
++
++```text
++Dev : Docker (PHP 8.4 + PostgreSQL 16 + Nginx) di Windows
++Prod: Cloudflare → Nginx → PHP-FPM → Laravel 13 → PostgreSQL
++      (+ Redis / object storage bila dibutuhkan, §5)
++```
++
++Docker untuk dev agar konsisten dengan target prod dan menutup gap
++(PHP lokal 8.2 vs syarat 8.4, tanpa PostgreSQL native). Tanpa container
++yang tidak diperlukan — tanpa Redis/MinIO di awal.
++
++## 2. Environment
++
++Pisahkan `local` / `staging` / `production`. Produksi wajib:
++
++```text
++APP_ENV=production
++APP_DEBUG=false
++SESSION_SECURE_COOKIE=true
++SESSION_HTTP_ONLY=true
++```
++
++Secrets (DB password, `APP_KEY`, SMTP, webhook, cloud credential) hanya
++via environment/secret manager — tidak pernah di-commit. Sediakan
++`.env.example` saat scaffold Phase 0.
++
++## 3. Docker Dev (rencana Phase 0)
++
++- `php:8.4-fpm` + ekstensi: `pgsql`, `mbstring`, `intl`, `gd`, `zip`,
++  `redis` (siap pakai, nonaktif default), `pcov` (coverage, dev only).
++- `postgres:16-alpine` + volume persisten; database terpisah
++  `webvolunteer` / `webvolunteer_test`.
++- `nginx:alpine` + config mengarah ke `public/`.
++- Satu `docker-compose.yml`: `app`, `web`, `db`, (nanti `queue`
++  worker + scheduler). Queue dev = `database`, dijalankan via
++  `php artisan queue:work` di container `queue`.
++
++## 4. VPS Produksi (Ubuntu)
++
++1. Nginx + PHP-FPM 8.4 + PostgreSQL 16 (managed lebih baik bila ada).
++2. TLS via Cloudflare (Full strict) + HSTS; security headers (§6).
++3. Deploy: `composer install --no-dev`, `npm run build`,
++   `php artisan migrate --force`, cache config/route/view,
++   `storage:link`, permission `storage/` + `bootstrap/cache/`.
++4. Supervisor/systemd untuk `queue:work` + `schedule:run`;
++   logrotate; firewall hanya 80/443 (+ SSH key-only).
++5. Migration selalu reversibel bila memungkinkan, tested di staging,
++   backward-compatible untuk rolling update; tanpa edit manual DB prod
++   tanpa migration terdokumentasi.
++
++## 5. Kapan Menambah Layanan
++
++| Sinyal | Tambahan |
++|---|---|
++| Queue `database` menumpuk / notifikasi lambat | Redis untuk queue |
++| Hit rate rendah pada list publik | Redis untuk cache |
++| Session file menjadi bottleneck | Redis untuk session |
++| Disk upload penuh / butuh CDN | S3/R2 via `Storage` (tanpa ubah logic) |
++
++Tanpa sinyal di atas: jangan tambah. Abstraksi Laravel membuat
++perpindahan tanpa mengubah business logic.
++
++## 6. Security Headers (Nginx/Laravel, produksi)
++
++HSTS (`max-age` besar + preload setelah validasi), CSP ketat
++(`default-src 'self'` + allowlist asset), `X-Content-Type-Options:
++nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
++`Permissions-Policy` minimal, `X-Frame-Options: DENY`, cookie Secure.
++
++## 7. Backup & Recovery
++
++- `pg_dump` terjadwal (harian, full + WAL bila managed), retensi:
++  harian 7, mingguan 4, bulanan 6. Backup file storage (snapshot /
++  sync ke object storage).
++- Prosedur restore terdokumentasi + **diuji berkala di staging** —
++  backup yang belum pernah diuji restore tidak dianggap valid.
++- Skema retensi data aplikasi (registration, attendance, log, file)
++  configurable; hard delete hanya via artisan teraudit oleh Super Admin.
++
++## 8. Observability
++
++Request ID per request (middleware + log context), application log,
++`audit_logs` + `security_logs`, error tracking (mis. Sentry/Flare),
++queue monitoring (gagal + retry), slow-query log PostgreSQL.
++Tanpa secret di log mana pun.
++
++## 9. Production Hardening Checklist (wajib sebelum go-live)
++
++- [ ] `APP_DEBUG=false`, error generik + error ID
++- [ ] HTTPS + HSTS + headers §6 + cookie Secure/HttpOnly/SameSite
++- [ ] Rate limit aktif semua endpoint sensitif
++- [ ] `composer audit` + `npm audit` bersih (critical/high)
++- [ ] Pint + PHPStan hijau; seluruh suite TESTING.md hijau
++- [ ] Backup + restore test lolos; runbook insiden tersedia
++- [ ] `.env` tidak di repo; secrets via manager; `.env.example` lengkap
++- [ ] Dependency tak terpakai dibuang; lock file di-commit
+diff --git a/PRD.md b/PRD.md
+new file mode 100644
+index 0000000..cb63b87
+--- /dev/null
++++ b/PRD.md
+@@ -0,0 +1,159 @@
++# PRD — Product Requirements Document
++
++## 1. Vision
++
++**WebVolunteer** adalah centralized event workforce platform: satu aplikasi
++multi-tenant tempat banyak organizer mengelola banyak event, dan satu akun
++volunteer dapat mengikuti banyak event.
++
++Target event: music festival, concert, campus event, community event, sport
++event, conference, creative festival, charity event, exhibition, public event.
++
++## 2. Tujuan Produk
++
++1. Organizer membuat dan mengelola banyak event dalam satu aplikasi.
++2. Satu event memiliki banyak division, role, shift, volunteer.
++3. Satu akun volunteer mengikuti banyak event.
++4. Organizer mengelola recruitment → operasional → evaluasi end-to-end.
++5. Platform reusable untuk event berikutnya tanpa project baru.
++6. Data antar organizer terisolasi (security-critical).
++7. Security dari level database hingga frontend.
++8. Business-critical operation ber-transaction dan tervalidasi.
++9. Aman terhadap concurrent registration.
++10. Siap berkembang menjadi SaaS / technology platform.
++
++## 3. User Types
++
++| Role | Cakupan | Kemampuan inti |
++|---|---|---|
++| Super Admin | Global | Kelola user/organizer/event/permission/settings; suspend; audit & security log; analytics platform |
++| Organizer Owner | 1 organisasi | Kelola organisasi + member; CRUD event; division/role/shift; registration; assignment; attendance; announcement; report |
++| Organizer Staff | Organisasi + permission | Subset configurable (mis. `registration.review`, `attendance.read`) |
++| Volunteer | Data milik sendiri | Profil, browse event, daftar, lihat status/assignment/schedule/attendance, terima announcement, unduh sertifikat |
++| Guest | Publik | Lihat event publik, cari event, register, login |
++
++Super Admin satu-satunya role lintas tenant.
++
++## 4. Organizer / Tenant
++
++Organizer adalah tenant utama. Profil: nama, slug, logo, deskripsi, kontak
++(email/phone/website/social), branding, status (`active`, `suspended`, `archived`).
++
++Keanggotaan via `organization_members` (`organization_id`, `user_id`, status,
++`joined_at`) + role per-organisasi. Tidak ada global role yang membuka akses tenant.
++
++## 5. Event
++
++Fields: `organization_id`, nama, slug (unik per organisasi), deskripsi,
++banner/thumbnail, kategori, venue, alamat, lat/long, timezone, `start_at`,
++`end_at`, `registration_start_at`, `registration_end_at`, status, kapasitas,
++kontak, terms, privacy notice. Branding per event (logo, banner, warna,
++sponsor, social) hanya berlaku pada event tersebut.
++
++### State transition event
++
++```text
++Draft → Published → Registration Open → Registration Closed →
++Ongoing → Completed → Archived
++                     ↘ Cancelled (dari banyak state, tercatat)
++```
++
++Aturan: transition divalidasi backend (`EventService::transitionTo()`),
++status invalid via manipulasi request ditolak 422. `Cancelled` memerlukan
++alasan; event `Cancelled`/`Archived` menolak registration baru dan
++perubahan assignment.
++
++## 6. Division, Role, Shift
++
++- **Division**: `event_id`, nama, deskripsi, supervisor, status.
++- **Role**: `event_id`, `division_id`, nama, deskripsi, quota, requirements,
++  skill, lokasi, status. Counter `accepted_count` untuk kontrol quota atomik.
++- **Shift**: `event_id`, `division_id`, `role_id`, `start_at`, `end_at`,
++  lokasi, kapasitas, supervisor, status. Volunteer hanya melihat shift
++  terkait assignment-nya.
++
++## 7. Custom Registration Form
++
++Organizer membuat field custom per event. Tipe: text, textarea, email, phone,
++number, date, time, select, multi-select, radio, checkbox, URL, file.
++Setiap field: label, tipe, required, placeholder, validation rule,
++sort order, active. Validasi selalu backend; jawaban file mengikuti
++aturan upload [SECURITY.md](SECURITY.md). Arbitrary HTML tidak disimpan
++tanpa sanitasi allowlist.
++
++## 8. Registration Flow & Status
++
++```text
++Browse → Detail → Pilih Role → Isi Form → Validasi → Submit → Pending →
++Under Review → Accepted / Rejected / Waitlisted → Assignment → Schedule →
++Attendance → Evaluasi → Certificate
++```
++
++Status: `Pending`, `Under Review`, `Accepted`, `Rejected`, `Waitlisted`,
++`Cancelled`, `Withdrawn`. Transition valid:
++
++| Dari | Ke |
++|---|---|
++| Pending | Under Review, Cancelled, Withdrawn |
++| Under Review | Accepted, Rejected, Waitlisted, Cancelled, Withdrawn |
++| Waitlisted | Accepted (slot tersedia), Rejected, Cancelled, Withdrawn |
++| Accepted | Cancelled (oleh organizer, melepas quota) |
++| Rejected/Cancelled/Withdrawn | terminal |
++
++Volunteer hanya boleh: submit (→ Pending), withdraw milik sendiri.
++Perubahan ke Accepted/Rejected/Waitlisted hanya oleh organizer ber-permission
++via `RegistrationService`.
++
++## 9. Business Rules Kritis
++
++1. **Satu user = satu registration aktif per event**:
++   unique constraint `registrations(user_id, event_id)` untuk status aktif
++   (Pending/Under Review/Accepted/Waitlisted) + validasi backend.
++2. **Quota tidak boleh terlampaui**: accept hanya via `QuotaService`
++   (transaction + `SELECT ... FOR UPDATE` pada `event_roles`). Quota 20 →
++   accepted maksimal 20. Kelebihan masuk waitlist.
++3. **Assignment** menyimpan history status
++   (Assigned → Reassigned → Confirmed → Completed); tidak ada hard delete
++   tanpa alasan audit.
++4. **Attendance**: check-in/out tervalidasi event + assignment + shift +
++   time window + user dari auth context. QR = token signed, short-lived,
++   anti-replay.
++5. **Certificate**: diterbitkan setelah event selesai + attendance memenuhi
++   syarat; ID unik + QR verifikasi publik dengan data minimal.
++6. **Announcement**: target event/division/role/shift/individu; tercatat
++   author, published_at, expiry.
++7. **Notification**: async via queue (database → email; WhatsApp/push
++   menyusul). Request HTTP tidak menunggu broadcast massal.
++8. **Report/export**: selalu event-scoped, authorization checked, rate
++   limited, audit logged; export besar via queue.
++
++## 10. Modul Event Musik (opsional per event)
++
++- **Artist liaison**: data artist (jadwal, venue, transport, requirements,
++  liaison ter-assign) — restricted sesuai permission.
++- **Incident**: kategori (medical, security, crowd, technical, lost & found,
++  other), prioritas (low–critical), status (open → assigned → in progress →
++  resolved → closed), scoped ke event.
++- **Lost & found**: item, deskripsi, foto, lokasi, waktu, status, handler.
++- **Talent pool**: pencarian volunteer berbasis skill/history dengan
++  privacy rules (visibility, data minimization).
++
++## 11. Scope per Phase
++
++- **Phase 1 (Foundation)**: auth, user, organization, membership, RBAC,
++  tenant isolation + test isolasi.
++- **Phase 2 (Event)**: event, division, role, shift, public page.
++- **Phase 3 (Volunteer)**: profile, registration, custom fields, seleksi,
++  waitlist, quota + concurrency test.
++- **Phase 4 (Operations)**: assignment, schedule, QR attendance,
++  announcement, notification.
++- **Phase 5 (Advanced)**: artist liaison, incident, lost & found,
++  talent pool, certificate.
++- **Phase 6 (Reporting)**: analytics, export, dashboard.
++- **Phase 7 (Hardening)**: audit menyeluruh, hardening produksi.
++
++## 12. Non-Goals (MVP)
++
++Multi-bahasa UI, payment/subscription, mobile app native, WhatsApp/push
++otomatis (cukup arsitektur siap), AI/matching otomatis, multi-tenancy
++database-per-tenant.
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..faebcc5
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,86 @@
++# WebVolunteer — Multi-Event Volunteer & Event Workforce Management Platform
++
++Platform web **multi-organizer / multi-event** untuk mengelola recruitment, seleksi,
++penempatan, scheduling, attendance, komunikasi, dan evaluasi volunteer/crew.
++
++Satu aplikasi melayani banyak organizer dan banyak event secara bersamaan:
++
++```text
++Platform
++│
++├── Organizer A ── Event A1, A2, A3
++├── Organizer B ── Event B1, B2
++└── Organizer C ── Event C1
++```
++
++Bukan website single-event. Data antar organizer terisolasi penuh (tenant isolation).
++
++## Stack
++
++| Lapisan    | Teknologi                                  |
++|------------|--------------------------------------------|
++| Backend    | Laravel 13, PHP 8.4, Blade, Livewire 4.4+ |
++| Interaksi  | Alpine.js, Tailwind CSS 4                  |
++| RBAC       | Spatie Laravel Permission                  |
++| Database   | PostgreSQL 16+                             |
++| Queue      | Database (MVP) → Redis bila traffic naik   |
++| Storage    | Local filesystem → S3/R2 via abstraksi     |
++| Web server | Nginx + PHP-FPM                            |
++| Test       | Pest, Pint, PHPStan/Larastan               |
++
++Tanpa React/Vue SPA. Server-rendered agar hemat resource VPS.
++
++## Status
++
++**Phase 0 — Pra-coding (dokumen desain).** Belum ada kode aplikasi.
++Lihat [PRD.md](PRD.md) dan peta dokumen di bawah.
++
++## Quickstart Dev (rencana, setelah scaffold Phase 0)
++
++```bash
++# 1. Pastikan Docker tersedia
++# 2. Scaffold Laravel 13 + PHP 8.4 ke subdirektori lalu pindahkan
++#    (create-project menolak direktori tidak kosong; lihat DEPLOYMENT.md)
++composer create-project laravel/laravel:^13.0 webvolunteer-tmp
++# 3. Jalankan PostgreSQL dev via Docker
++# 4. cp .env.example .env && php artisan key:generate
++# 5. php artisan migrate && php artisan test
++```
++
++Detail environment: [DEPLOYMENT.md](DEPLOYMENT.md).
++
++## Peta Dokumen
++
++| Dokumen              | Isi                                                                 |
++|----------------------|---------------------------------------------------------------------|
++| [PRD.md](PRD.md)                 | Vision, user types, fitur per phase, state transition, business rules |
++| [ARCHITECTURE.md](ARCHITECTURE.md) | Modular monolith, service layer, abstraksi queue/storage/cache   |
++| [DATABASE.md](DATABASE.md)         | Tabel, relasi, constraint, index, ERD                            |
++| [SECURITY.md](SECURITY.md)         | Auth, RBAC+scope, tenant isolation, auth matrix, threat model    |
++| [TESTING.md](TESTING.md)           | Strategi unit/feature/authorization/isolation/concurrency        |
++| [API.md](API.md)                   | Kontrak `/api/*` (dibangun setelah fondasi web stabil)           |
++| [DEPLOYMENT.md](DEPLOYMENT.md)     | Docker dev, VPS prod, backup/restore, hardening checklist        |
++
++## Development Phases
++
++1. **Foundation** — auth, user, organization, membership, RBAC, tenant isolation
++2. **Event** — event, division, role, shift, public event page
++3. **Volunteer** — profile, registration, custom fields, seleksi, waitlist, quota
++4. **Operations** — assignment, schedule, QR attendance, announcement, notification
++5. **Advanced Event** — artist liaison, incident, lost & found, talent pool, certificate
++6. **Reporting** — analytics, export, dashboard
++7. **Hardening** — security audit, isolation test, concurrency test, production hardening
++
++## Prinsip Non-Negosiable
++
++```text
++Security First → Authorization First → Tenant Isolation →
++Server-side Validation → Database Integrity →
++Transaction & Concurrency Safety → Business Logic →
++Performance → UX → Testing
++```
++
++- Jangan percaya data/role/tenant ID/event ID dari client.
++- Authorization selalu di backend (Policy + scoped query).
++- Critical write selalu dalam transaction + constraint database.
++- Tidak ada klaim "100% aman" — secure-by-design, testing, review, monitoring.
+diff --git a/SECURITY.md b/SECURITY.md
+new file mode 100644
+index 0000000..fd6e02a
+--- /dev/null
++++ b/SECURITY.md
+@@ -0,0 +1,182 @@
++# SECURITY
++
++Prinsip: **tidak ada klaim "100% aman"**. Secure-by-design → automated
++testing → security review → hardening → monitoring → continuous improvement.
++
++Aturan absolut (lihat README): jangan percaya input/role/tenant ID/event ID
++dari client; otorisasi selalu backend; resource selalu ter-scope ke tenant.
++
++## 1. Authentication
++
++- Laravel authentication bawaan (starter kit sesuai kebutuhan —
++  diputuskan saat scaffold Phase 0): register, login, logout, verifikasi email,
++  forgot/reset password, session expiration + invalidasi.
++- Password: hashing bcrypt/argon2, tidak plaintext/reversibel, tidak masuk
++  log/response. Kebijakan panjang minimum disarankan 12 karakter
++  (dikunci saat Phase 1, validasi backend).
++- Login: rate limit 5/menit per IP+email, lockout temporer, respons
++  generik (tidak membocorkan email terdaftar), setiap gagal tercatat di
++  `security_logs`.
++- Operasi sensitif (ubah permission, suspend, hapus organisasi, export
++  sensitif): re-authentication + konfirmasi + alasan teraudit.
++- Sanctum hanya saat API eksternal dibangun (lihat [API.md](API.md)).
++
++## 2. Session & Cookie
++
++`Secure + HttpOnly + SameSite=Lax`, rotasi ID session saat login
++(`Session::regenerate()`), invalidasi + regenerate token CSRF saat logout,
++idle timeout + absolute lifetime configurable. Tanpa token auth di
++`localStorage`.
++
++## 3. Authorization: RBAC + Membership + Scope
++
++- Role global: hanya `super_admin`.
++- Owner: penuh dalam 1 organisasi. Staff: permission configurable.
++- Setiap cek = permission **dan** scope:
++  `user->can('registration.review') &&
++  $user->belongsToOrganization($event->organization_id)`.
++- Policy per resource (`EventPolicy`, `RegistrationPolicy`,
++  `AssignmentPolicy`, `AttendancePolicy`, `IncidentPolicy`, ...).
++  Route model binding scoped ke organisasi/event user.
++- Mass assignment: `$fillable` allowlist eksplisit; field sensitif
++  (`organization_id`, `owner_id`, `role`, `permissions`, status verifikasi,
++  security flags) tidak pernah fillable — di-set server-side.
++- Privilege escalation: tidak ada endpoint yang membiarkan user mengubah
++  role/organisasi/permission milik sendiri.
++
++## 4. Tenant Isolation & IDOR
++
++Rantai: `User → Organization → Event → Resource`. Setiap baca/tulis
++memvalidasi ownership chain via scoped query + policy.
++
++- IDOR: `GET /organizer/events/124` di luar scope → **404** (tidak
++  membocorkan keberadaan) untuk resource tenant; 403 untuk aksi yang
++  resource-nya terlihat namun tidak diizinkan. Konsisten per resource.
++- Wajib diuji pada: events, divisions, roles, shifts, registrations,
++  assignments, attendance, incidents, certificates, exports, announcements.
++- Frontend (hidden button, filter) bukan boundary keamanan.
++
++## 5. Authorization Matrix
++
++| Aksi | Super Admin | Owner | Staff | Volunteer | Guest |
++|---|---|---|---|---|---|
++| Kelola organization | ✓ | own org | — | — | — |
++| Kelola member org | ✓ | own org | sesuai perm | — | — |
++| Create event | ✓ | ✓ | `event.create` | — | — |
++| Edit event | ✓ | ✓ | `event.update` | — | — |
++| Delete/cancel event | ✓ | ✓ | — | — | — |
++| Lihat registration | ✓ | ✓ | `registration.read` | milik sendiri | — |
++| Accept/reject/waitlist | ✓ | ✓ | `registration.review` | — | — |
++| Assign/reassign | ✓ | ✓ | `volunteer.assign` | — | — |
++| Check-in/out manual (operator) | ✓ | ✓ | `attendance.manage` | — | — |
++| Check-in/out milik sendiri (QR) | — | — | — | own only | — |
++| Lihat attendance event | ✓ | ✓ | `attendance.read` | milik sendiri | — |
++| Buat announcement | ✓ | ✓ | `announcement.create` | — | — |
++| Export | ✓ | ✓ | `report.export` | sertifikat sendiri | — |
++| Lihat audit log | ✓ | own org | — | — | — |
++| Lihat security log | ✓ | — | — | — | — |
++| Suspend user/org | ✓ | — | — | — | — |
++| Lihat event publik | ✓ | ✓ | ✓ | ✓ | ✓ |
++
++"✓ Owner/Staff" selalu berarti **dalam organisasinya sendiri** —
++di luar itu 404/403. Volunteer "own only" ditegakkan via
++`user_id = auth()->id()` server-side.
++
++## 6. Input, XSS, SQLi
++
++- Semua input via Form Request (`authorize()` + `rules()`); jangan bangun
++  SQL dari input — Eloquent/Query Builder + binding; raw SQL hanya dengan
++  parameter ter-bind.
++- Output Blade default `{{ }}` (escaped). Tidak ada `{!! !!}` untuk konten
++  user. Rich text (bila dibutuhkan): sanitizer allowlist — strip `<script>`,
++  event handler, skema URL (`javascript:`, `data:`, `file:`).
++- Validasi file custom-field tipe file/URL mengikuti §9.
++
++## 7. CSRF & Rate Limit
++
++- Semua route state-changing (POST/PUT/PATCH/DELETE) di bawah middleware
++  web + verifikasi CSRF; diuji pada: create/update event, registration,
++  accept/reject, assignment, attendance.
++- Rate limit (throttle): login, register, password reset, verifikasi,
++  submit registration, QR scan, export, broadcast notifikasi, API sensitif.
++  Pelanggaran tercatat di `security_logs`.
++
++## 8. QR Attendance Anti-Fraud
++
++- Token = Laravel signed URL / encrypted payload: `assignment_id`,
++  `shift_id`, `exp` (±5 menit), `nonce` sekali pakai (cache/database).
++- Validasi server: signature, expiry, nonce belum dipakai, event +
++  assignment + shift cocok, dalam time window, `user_id` dari auth context
++  (bukan dari QR/client). Tanpa secret plaintext di QR.
++- Check-in/out idempotent via `idempotency_key`; replay → 409 + log.
++
++## 9. File Upload
++
++MIME + ekstensi + **signature header** tervalidasi server, batas ukuran,
++nama file acak (UUID + ekstensi allowlist), direktori non-executable di
++luar document root (via `Storage`), tolak path traversal & overwrite,
++image di-re-encode bila memungkinkan. Jangan percaya original filename,
++ekstensi, atau MIME dari client. Penolakan tercatat di `security_logs`.
++
++## 10. SSRF, Open Redirect, Headers, Error
++
++- **SSRF**: tidak ada fetch URL arbitrary dari user. Bila dibutuhkan
++  (mis. unfurl sponsor): allowlist domain + protokol https, blokir
++  localhost/private IP/metadata endpoint, batasi redirect & timeout,
++  validasi hasil resolusi DNS.
++- **Open redirect**: hanya route internal / domain allowlist; parameter
++  `redirect`/`next` divalidasi, skema non-http(s) ditolak.
++- **Headers produksi**: HSTS, CSP (ketat, disesuaikan asset), nosniff,
++  Referrer-Policy, Permissions-Policy, frame-deny, cookie Secure.
++- **Error**: respons generik + internal error ID + server-side logging.
++  Tidak ada stack trace, `SQLSTATE`, path, env, secret di produksi.
++  Handler: 401/403/404/419/422/429/500.
++
++## 11. Privacy & Data Minimization
++
++Profil volunteer private-by-default (`visibility`); phone, email pribadi,
++emergency contact, catatan internal/review hanya untuk role yang
++membutuhkan (policy + presenter/API resource terpisah public vs private).
++Kumpulkan data seminimal mungkin; retensi/deletion configurable.
++
++## 12. Audit Log & Security Log
++
++- **Audit** (`audit_logs`, append-only): actor, organization, event,
++  action, resource type+ID, old/new values, IP, UA, timestamp, request ID.
++  Mencakup: login/logout, CRUD event/division/role, registration
++  created/accepted/rejected, assignment created/updated, attendance,
++  export, perubahan role/permission. Tidak boleh diubah organizer;
++  tanpa password/token/secret.
++- **Security** (`security_logs`, append-only, terpisah): failed_login,
++  account_locked, invalid_token, forbidden_access, rate_limit_exceeded,
++  csrf_violation, suspicious_request, file_upload_rejected.
++- Semua request membawa Request ID (middleware + log context).
++
++## 13. Threat Model
++
++Format: Threat → Impact → Likelihood → Mitigasi → Test.
++
++| # | Threat | Impact | Likelihood | Mitigasi | Test |
++|---|---|---|---|---|---|
++| T1 | Broken Access Control / IDOR | Tinggi — baca/ubah data tenant lain | Tinggi | Scoped query + Policy + binding scoped; 404 di luar scope | Tenant isolation suite (§14), tiap resource |
++| T2 | Tenant Data Leakage (export/report) | Tinggi | Sedang | Export selalu scoped + permission + audit + rate limit | Export lintas tenant ditolak; audit tercatat |
++| T3 | Privilege Escalation | Tinggi | Sedang | Fillable allowlist; tanpa endpoint ubah role sendiri; re-auth aksi sensitif | Mass-assignment & escalation test |
++| T4 | Credential Theft / Stuffing | Tinggi | Tinggi | Hash kuat, lockout, session rotation, cookie aman | Brute-force & session test |
++| T5 | Brute Force (login/reset/OTP) | Sedang | Tinggi | Throttle + lockout + monitoring, respons generik | Rate-limit test |
++| T6 | Stored/Reflected XSS | Sedang–Tinggi | Sedang | Escape default, sanitizer allowlist | XSS payload test |
++| T7 | CSRF | Sedang | Sedang | Token + SameSite, semua mutasi terproteksi | CSRF test per aksi kritis |
++| T8 | SQL Injection | Tinggi | Rendah | ORM/binding; raw SQL ter-bind | SAST + payload test |
++| T9 | SSRF | Sedang | Rendah | Allowlist domain, blokir internal/metadata | SSRF test bila fetch eksternal ada |
++| T10 | File Upload Abuse | Tinggi | Sedang | Validasi signature, nama acak, non-executable | Upload malicious/oversize test |
++| T11 | Race Condition (quota/attendance) | Tinggi | Sedang | Transaction + `FOR UPDATE` + check constraint | Concurrency test (3 user, 1 slot) |
++| T12 | Session Hijacking | Tinggi | Rendah | Secure/HttpOnly/SameSite, rotasi, expiry | Session invalidation test |
++| T13 | API Abuse | Sedang | Sedang | Auth, throttle, pagination, scoping | API abuse test |
++| T14 | Information Disclosure (error/log) | Sedang | Sedang | Error generik + ID, tanpa secret di log | Error-response review |
++| T15 | Open Redirect | Rendah–Sedang | Rendah | Allowlist redirect internal | Open-redirect test |
++
++## 14. Security Testing Wajib (acuan TESTING.md)
++
++IDOR, tenant isolation (Org A vs Org B), privilege escalation, mass
++assignment, SQLi, XSS, CSRF, SSRF, open redirect, file upload, brute
++force, rate limit, session invalidation, race condition, duplicate
++registration, information disclosure. Jangan hanya happy path.
+diff --git a/TESTING.md b/TESTING.md
+new file mode 100644
+index 0000000..c674f0d
+--- /dev/null
++++ b/TESTING.md
+@@ -0,0 +1,106 @@
++# TESTING
++
++Framework: **Pest** (di atas PHPUnit) + database PostgreSQL khusus test
++(`*_test`, migration fresh per suite). Target: setiap perubahan penting
++memiliki test; setiap bug diperbaiki pada root cause + regression test.
++
++## 1. Piramida Test
++
++```text
++Unit (service/domain)  — cepat, banyak
++Feature/Integration    — alur HTTP + Livewire per role
++Authorization          — matriks SECURITY.md §5 per endpoint
++Tenant Isolation       — Org A vs Org B, security-critical
++Concurrency            — race quota/assignment/attendance
++E2E (selektif)         — 3 alur utama (volunteer, organizer, admin)
++```
++
++Kualitas: Pint (PSR-12), PHPStan/Larastan level ≥5, `composer audit`
++bersih dari critical/high tanpa alasan terdokumentasi, review N+1
++(`assertNoNPlusOne` / query-count assertion pada list berat).
++
++## 2. Unit Test (contoh)
++
++- `QuotaService`: accept saat slot tersedia → `accepted_count++`;
++  accept saat penuh → exception + waitlist; release → counter turun,
++  tidak pernah negatif (check constraint).
++- `RegistrationService`: transition valid lolos, invalid ditolak;
++  volunteer tidak bisa set Accepted; duplikat aktif ditolak.
++- `EventService`: transition status valid/invalid; cancel butuh alasan.
++- `AttendanceService`: di luar time window ditolak; QR expired/nonce
++  dipakai ditolak; idempotency key sama → record existing.
++- `CertificateService`: eligibility (event completed + attendance
++  memenuhi syarat) benar; nomor unik.
++- Policy unit: tiap policy lolos untuk pemilik scope, gagal di luar scope.
++
++## 3. Feature / Integration Test
++
++Auth (register, login, logout, verifikasi email, reset password);
++organisasi (create, invite member, suspend); event (CRUD + publish flow);
++division/role/shift; custom fields; registration submit → review →
++accept/reject/waitlist → assignment → schedule → check-in/out →
++certificate; announcement + notifikasi terkirim via queue (fake);
++export scoped + teraudit.
++
++Setiap alur diuji untuk 5 aktor: Super Admin, Owner, Staff (dengan dan
++tanpa permission relevan), Volunteer (own-only), Guest (ditolak/dibatasi).
++
++## 4. Authorization Test
++
++Untuk tiap endpoint: 200/302 bagi berhak, 403/404 bagi tidak berhak,
++302→login bagi guest. Fokus: Staff **tanpa** permission ditolak meski
++satu organisasi; Staff **dengan** permission ditolak di luar organisasinya;
++Volunteer ditolak atas data volunteer lain (IDOR langsung).
++
++## 5. Tenant Isolation Test (wajib, security-critical)
++
++Skenario baku:
++
++```text
++Org A: Event A, Registration A, Assignment A, Attendance A, Incident A
++Org B: Event B, Registration B, Assignment B, Attendance B, Incident B
++```
++
++Asert: A tidak bisa read/update/delete/export B pada **seluruh**
++resource (events, divisions, roles, shifts, registrations, assignments,
++attendance, incidents, certificates, exports, announcements) — 404/403
++tanpa membocorkan keberadaan. Berlaku simetris (B vs A).
++
++## 6. Concurrency Test
++
++- **Quota**: role tersisa 1 slot; 3 user submit+accept bersamaan
++  (proses/paralel test runner, mis. Pest parallel + worker DB terpisah)
++  → tepat 1 Accepted, 2 Waitlisted/Rejected;
++  `accepted_count ≤ quota` selalu.
++- Duplikat: double-submit (idempotency key sama) → 1 record;
++  check-in ganda → 1 attendance; accept ganda → counter naik 1x.
++- Cancellation bersamaan dengan accept → state konsisten (salah satu
++  menang, tidak ada counter negatif).
++- Syarat: test berjalan melawan PostgreSQL (bukan SQLite) agar
++  `FOR UPDATE` dan constraint parsial benar-benar teruji.
++
++## 7. Edge Cases
++
++Registrasi saat: event draft/cancelled/archived, periode tutup, role
++nonaktif, quota penuh, user sudah terdaftar, user suspended, organizer
++suspended. QR expired/duplikat. File: invalid/oversize/malicious.
++Session expired. ID organisasi/event invalid. Export tanpa permission.
++Payload besar (request size limit) dan spam (throttle).
++
++## 8. E2E (selektif, 3 alur)
++
++1. **Volunteer**: register → verifikasi → login → browse → pilih role →
++   submit → cek status → terima → lihat schedule → check-in/out →
++   terima sertifikat → verifikasi publik.
++2. **Organizer**: login → buat event → division/role/shift → buka
++   registrasi → review → accept → assign → monitor attendance →
++   tutup event → generate report.
++3. **Admin**: login → kelola organizer/user/permission → review log →
++   suspend → audit tercatat.
++
++## 9. Definition of Done (testing)
++
++Unit + feature + authorization + isolation + concurrency hijau;
++edge cases tercakup; static analysis & audit bersih; tidak ada N+1 pada
++list utama (registrations, volunteers, attendance, reports);
++manual checklist SECURITY.md §14 lolos sebelum rilis.
+diff --git a/docs/superpowers/plans/2026-09-14-phase0-dev-scaffold.md b/docs/superpowers/plans/2026-09-14-phase0-dev-scaffold.md
+new file mode 100644
+index 0000000..c7f33a1
+--- /dev/null
++++ b/docs/superpowers/plans/2026-09-14-phase0-dev-scaffold.md
+@@ -0,0 +1,474 @@
++# Phase 0: Dev Scaffold Implementation Plan
++
++> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
++
++**Goal:** Mendirikan fondasi dev yang berjalan: Docker (PHP 8.4 + PostgreSQL 16 + Nginx), scaffold Laravel 13, paket dasar terinstall, test suite hijau.
++
++**Architecture:** Semua perintah PHP/composer/artisan berjalan di container `app` (image `php:8.4-fpm`), menutup gap PHP host 8.2. Build asset via Node host (v24 tersedia). Database dev + test di container `db`. Tanpa Redis/service lain.
++
++**Tech Stack:** Docker Compose, PHP 8.4-FPM, PostgreSQL 16-alpine, Nginx alpine, Laravel ^13.0, Livewire ^4.0, Spatie Permission, Pest, Pint, Larastan, Node 24 (host, hanya untuk build asset).
++
++**Spec:** `README.md`, `PRD.md`, `ARCHITECTURE.md`, `DATABASE.md`, `SECURITY.md`, `TESTING.md`, `API.md`, `DEPLOYMENT.md` (repo root `D:\volunt`).
++
++## Global Constraints
++
++- PHP 8.4 — hanya via container; PHP host 8.2 tidak dipakai untuk PHP/composer/artisan.
++- Laravel ^13.0 (`composer create-project laravel/laravel:^13.0`).
++- PostgreSQL 16 (`postgres:16-alpine`); kredensial dev `webvolunteer/secret`.
++- Semua perintah PHP/composer/artisan via `docker compose exec app ...` (atau `run --rm` bila container belum up).
++- Dilarang menambah Redis, MinIO, atau service lain di Phase 0 (lihat DEPLOYMENT.md §5).
++- Setup Tailwind 4 penuh ditunda ke rencana Phase 1 (fondasi UI); Phase 0 cukup `npm run build` sukses + homepage 200.
++- Bahasa prose: Indonesia; code/identifier/branch English.
++- Setiap langkah berisi konten nyata; tanpa TBD/TODO/placeholder.
++
++---
++
++## Scope Check
++
++Spec mencakup 7 phase; rencana ini hanya **Phase 0 (scaffold)** — satu-satunya scope yang menghasilkan software berjalan dan teruji tanpa fondasi lain. Phase 1 (Foundation: auth, organization, RBAC, isolation) dan seterusnya masing-masing mendapat rencana terpisah setelah Phase 0 hijau.
++
++## File Structure
++
++Dibuat di Phase 0 (selain ratusan file hasil scaffold yang tidak didaftar satu per satu):
++
++- `docker-compose.yml` — service `app` (PHP-FPM), `web` (Nginx :8000), `db` (Postgres :5432).
++- `docker/php/Dockerfile` — `php:8.4-fpm` + ekstensi pgsql/intl/zip/bcmath + composer.
++- `docker/nginx/default.conf` — vhost ke `public/`, `client_max_body_size 20M`.
++- `phpstan.neon` — Larastan, level 5, paths `app`.
++- `tests/Feature/SmokeTest.php` — homepage 200 + koneksi PostgreSQL.
++- Diubah: `.env` (DB pgsql + queue database), `phpunit.xml` (DB test pgsql), `README.md` (status Phase 0).
++
++---
++
++### Task 1: Git init + baseline commit
++
++**Files:**
++- Create: repo git di `D:\volunt`
++- Test: `git log --oneline`, `git status --porcelain`
++
++**Interfaces:**
++- Consumes: dokumen pra-coding yang sudah ada + file rencana ini.
++- Produces: repo bersih dengan commit baseline; semua task berikut commit di atasnya.
++
++- [ ] **Step 1: Init repo dan commit baseline**
++
++```bash
++git init
++git add README.md PRD.md ARCHITECTURE.md DATABASE.md SECURITY.md TESTING.md API.md DEPLOYMENT.md docs/superpowers/plans/2026-09-14-phase0-dev-scaffold.md webvolunteer-prompt.md
++git commit -m "docs: pre-coding spec + phase 0 plan"
++```
++
++- [ ] **Step 2: Verifikasi repo bersih**
++
++Run: `git log --oneline -n 1; git status --porcelain`
++Expected: satu baris commit `docs: pre-coding spec + phase 0 plan`, status kosong.
++
++---
++
++### Task 2: Docker dev environment
++
++**Files:**
++- Create: `docker/php/Dockerfile`, `docker/nginx/default.conf`, `docker-compose.yml`
++- Test: `docker compose config`, `pg_isready` via exec
++
++**Interfaces:**
++- Consumes: Task 1 (repo).
++- Produces: service `db` sehat (`db:5432`, user/pass `webvolunteer/secret`, db `webvolunteer`); service `app` dengan PHP 8.4 + composer (belum ada kode Laravel — itu Task 3).
++
++- [ ] **Step 1: Tulis Dockerfile PHP**
++
++`docker/php/Dockerfile`:
++
++```dockerfile
++FROM php:8.4-fpm
++
++RUN apt-get update && apt-get install -y \
++    libpq-dev libicu-dev libzip-dev unzip git \
++    && docker-php-ext-install pdo_pgsql pgsql intl zip bcmath \
++    && apt-get clean && rm -rf /var/lib/apt/lists/
++
++COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
++
++WORKDIR /var/www/html
++```
++
++- [ ] **Step 2: Tulis vhost Nginx**
++
++`docker/nginx/default.conf`:
++
++```nginx
++server {
++    listen 80;
++    root /var/www/html/public;
++    index index.php;
++
++    client_max_body_size 20M;
++
++    location / {
++        try_files $uri $uri/ /index.php?$query_string;
++    }
++
++    location ~ \.php$ {
++        fastcgi_pass app:9000;
++        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
++        include fastcgi_params;
++    }
++}
++```
++
++- [ ] **Step 3: Tulis docker-compose.yml**
++
++`docker-compose.yml`:
++
++```yaml
++services:
++  app:
++    build:
++      context: .
++      dockerfile: docker/php/Dockerfile
++    container_name: webvolunteer-app
++    volumes:
++      - ./:/var/www/html
++    environment:
++      DB_HOST: db
++      DB_DATABASE: webvolunteer
++      DB_USERNAME: webvolunteer
++      DB_PASSWORD: secret
++    depends_on:
++      db:
++        condition: service_healthy
++
++  web:
++    image: nginx:alpine
++    container_name: webvolunteer-web
++    ports:
++      - "8000:80"
++    volumes:
++      - ./:/var/www/html
++      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
++    depends_on:
++      - app
++
++  db:
++    image: postgres:16-alpine
++    container_name: webvolunteer-db
++    environment:
++      POSTGRES_DB: webvolunteer
++      POSTGRES_USER: webvolunteer
++      POSTGRES_PASSWORD: secret
++    ports:
++      - "5432:5432"
++    volumes:
++      - pgdata:/var/lib/postgresql/data
++    healthcheck:
++      test: ["CMD-SHELL", "pg_isready -U webvolunteer"]
++      interval: 5s
++      timeout: 5s
++      retries: 5
++
++volumes:
++  pgdata:
++```
++
++- [ ] **Step 4: Validasi config dan nyalakan database**
++
++```bash
++docker compose config --quiet
++docker compose up -d --build db
++docker compose exec db pg_isready -U webvolunteer
++```
++
++Expected: `config` tanpa error; `pg_isready` mencetak `accepting connections`.
++
++- [ ] **Step 5: Commit**
++
++```bash
++git add docker-compose.yml docker/php/Dockerfile docker/nginx/default.conf
++git commit -m "chore: docker dev env (php 8.4, postgres 16, nginx)"
++```
++
++---
++
++### Task 3: Scaffold Laravel 13
++
++**Files:**
++- Create: seluruh skeleton Laravel di repo root (via direktori temp, karena `create-project` menolak direktori tidak kosong)
++- Test: `php -v`, `php artisan --version`, `curl localhost:8000`
++
++**Interfaces:**
++- Consumes: Task 2 (service `app`/`web`/`db`).
++- Produces: aplikasi Laravel 13 berjalan di `http://localhost:8000` (HTTP 200), `APP_KEY` terisi, asset ter-build.
++
++- [ ] **Step 1: Scaffold ke direktori temp di container**
++
++```bash
++docker compose run --rm app composer create-project laravel/laravel:^13.0 /tmp/scaffold
++docker compose exec app sh -c "cp -a /tmp/scaffold/. /var/www/html/ && rm -rf /tmp/scaffold"
++```
++
++Expected: `create-project` selesai tanpa error; file skeleton (`artisan`, `public/`, `routes/`) ada di `D:\volunt`.
++
++- [ ] **Step 2: Verifikasi versi PHP dan Laravel**
++
++```bash
++docker compose exec app php -v
++docker compose exec app php artisan --version
++```
++
++Expected: `php -v` memuat `PHP 8.4.`; artisan mencetak `Laravel Framework 13.`.
++
++- [ ] **Step 3: Generate key dan build asset**
++
++```bash
++docker compose exec app cp .env.example .env
++docker compose exec app php artisan key:generate
++npm install
++npm run build
++```
++
++Expected: `key:generate` mencetak `Application key set successfully`; `npm run build` sukses dan menghasilkan `public/build/manifest.json` (atau `manifest.webmanifest` sesuai versi Vite — yang penting build exit 0).
++
++- [ ] **Step 4: Nyalakan stack dan cek homepage**
++
++```bash
++docker compose up -d --build
++curl -s -o NUL -w "%{http_code}" http://localhost:8000
++```
++
++Expected: `200`. Jika bukan 200, baca `docker compose logs app web` dan perbaiki root cause (bukan workaround) sebelum lanjut.
++
++- [ ] **Step 5: Commit**
++
++```bash
++git add -A
++git commit -m "chore: scaffold laravel 13 + build assets"
++```
++
++---
++
++### Task 4: Paket dasar + konfigurasi database
++
++**Files:**
++- Modify: `.env`, `phpunit.xml`
++- Create: `phpstan.neon`
++- Test: `php artisan migrate`, `\dt` via psql, `git check-ignore .env`
++
++**Interfaces:**
++- Consumes: Task 3 (Laravel berjalan).
++- Produces: Spatie + Livewire + Pest + Pint + Larastan terinstall (versi tercatat); migrasi default + permission hijau di `webvolunteer`; DB test `webvolunteer_test` ada.
++
++- [ ] **Step 1: Install paket runtime dan catat versi**
++
++```bash
++docker compose exec app composer require spatie/laravel-permission livewire/livewire:^4.0
++docker compose exec app composer show spatie/laravel-permission livewire/livewire | findstr "versions"
++```
++
++Expected: install sukses; catat versi mayor yang ter-resolve (Spatie harus mendukung Laravel 13 — jika composer konflik, hentikan task dan laporkan, jangan force).
++
++- [ ] **Step 2: Install tooling dev**
++
++```bash
++docker compose exec app composer require --dev pestphp/pest --with-all-dependencies
++docker compose exec app composer require --dev pestphp/pest-plugin-laravel laravel/pint larastan/larastan
++docker compose exec app ./vendor/bin/pest --init
++```
++
++Expected: `tests/Pest.php` ada setelah `--init`.
++
++- [ ] **Step 3: Publish Spatie dan set `.env` database**
++
++```bash
++docker compose exec app php artisan vendor:publish --provider="Spatie\Permission\PermissionServiceProvider"
++```
++
++Lalu di `.env` set tujuh key ini (nilai persis):
++
++```text
++DB_CONNECTION=pgsql
++DB_HOST=db
++DB_PORT=5432
++DB_DATABASE=webvolunteer
++DB_USERNAME=webvolunteer
++DB_PASSWORD=secret
++QUEUE_CONNECTION=database
++```
++
++Verifikasi:
++
++```bash
++docker compose exec app php artisan tinker --execute="print_r(['db'=>config('database.default'),'queue'=>config('queue.default')]);"
++```
++
++Expected: `db => pgsql`, `queue => database`.
++
++- [ ] **Step 4: Migrasi + buat database test**
++
++```bash
++docker compose exec app php artisan migrate --force
++docker compose exec db psql -U webvolunteer -c "CREATE DATABASE webvolunteer_test;"
++docker compose exec db psql -U webvolunteer -d webvolunteer -c "\dt" | findstr "permissions roles"
++```
++
++Expected: migrate sukses; `\dt` memuat tabel `permissions` dan `roles` (bukti publish Spatie + migrasi hijau).
++
++- [ ] **Step 5: Pastikan `.env` ter-ignore dan tulis phpstan.neon**
++
++```bash
++git check-ignore .env
++```
++
++Expected: mencetak `.env`.
++
++`phpstan.neon`:
++
++```neon
++includes:
++    - vendor/larastan/larastan/extension.neon
++
++parameters:
++    level: 5
++    paths:
++        - app
++```
++
++- [ ] **Step 6: Commit**
++
++```bash
++git add -A
++git commit -m "chore: base packages (spatie, livewire, pest, pint, larastan) + pgsql config"
++```
++
++---
++
++### Task 5: Smoke test hijau
++
++**Files:**
++- Create: `tests/Feature/SmokeTest.php`
++- Modify: `phpunit.xml` (env DB test)
++- Test: `./vendor/bin/pest`
++
++**Interfaces:**
++- Consumes: Task 4 (DB app + test siap, Pest terinstall).
++- Produces: suite hijau sebagai baseline Phase 1; `phpunit.xml` menunjuk ke `webvolunteer_test` via service `db`.
++
++- [ ] **Step 1: Arahkan phpunit ke database test**
++
++Baca `phpunit.xml`, pastikan blok `<php>` memuat enam baris ini (tambah/ubah seperlunya):
++
++```xml
++<env name="DB_CONNECTION" value="pgsql"/>
++<env name="DB_HOST" value="db"/>
++<env name="DB_PORT" value="5432"/>
++<env name="DB_DATABASE" value="webvolunteer_test"/>
++<env name="DB_USERNAME" value="webvolunteer"/>
++<env name="DB_PASSWORD" value="secret"/>
++```
++
++Lalu siapkan skema test:
++
++```bash
++docker compose exec app php artisan migrate --database=pgsql --force --env=testing
++```
++
++Jika perintah di atas tidak memakai DB test (tergantung koneksi `testing`), alternatif deterministik:
++
++```bash
++docker compose exec app sh -c "DB_DATABASE=webvolunteer_test php artisan migrate --force"
++```
++
++Expected: tabel ada di `webvolunteer_test` (cek: `docker compose exec db psql -U webvolunteer -d webvolunteer_test -c "\dt" | findstr migrations`).
++
++- [ ] **Step 2: Tulis smoke test**
++
++`tests/Feature/SmokeTest.php`:
++
++```php
++<?php
++
++use Illuminate\Support\Facades\DB;
++
++it('memuat halaman utama', function () {
++    $this->get('/')->assertOk();
++});
++
++it('terhubung ke PostgreSQL', function () {
++    expect(DB::select('select version()'))->not->toBeEmpty();
++});
++```
++
++- [ ] **Step 3: Jalankan suite**
++
++```bash
++docker compose exec app ./vendor/bin/pest
++```
++
++Expected: `2 passed` (atau lebih bila ExampleTest bawaan masih ada dan hijau). Merah → perbaiki root cause, bukan skip/hapus test yang gagal.
++
++- [ ] **Step 4: Commit**
++
++```bash
++git add tests/Feature/SmokeTest.php phpunit.xml
++git commit -m "test: smoke baseline (homepage + pgsql connection)"
++```
++
++---
++
++### Task 6: Quality gates + tutup Phase 0
++
++**Files:**
++- Modify: `README.md` (status Phase 0)
++- Test: `./vendor/bin/pint --test`, `./vendor/bin/phpstan analyse`, `composer audit`
++
++**Interfaces:**
++- Consumes: Task 5 (suite hijau).
++- Produces: Pint + PHPStan + audit hijau; README akurat; Phase 0 selesai dan siap jadi basis rencana Phase 1.
++
++- [ ] **Step 1: Format check**
++
++```bash
++docker compose exec app ./vendor/bin/pint --test
++```
++
++Expected: `PASS`. Jika `FAIL`, jalankan `./vendor/bin/pint` (tanpa `--test`), lalu ulangi `--test` hingga PASS.
++
++- [ ] **Step 2: Static analysis**
++
++```bash
++docker compose exec app ./vendor/bin/phpstan analyse --no-progress --memory-limit=1G
++```
++
++Expected: `No errors`. Error di file skeleton bawaan → perbaiki jika milik kita, atau laporkan sebagai temuan (jangan tambah ke baseline ignore tanpa alasan tertulis di commit message).
++
++- [ ] **Step 3: Dependency audit**
++
++```bash
++docker compose exec app composer audit
++```
++
++Expected: tanpa temuan critical/high. Jika ada: update paket terkait, atau catat alasan penundaan di commit message (lihat SECURITY.md §DEPLOYMENT checklist).
++
++- [ ] **Step 4: Update status README dan commit final**
++
++Ubah di `README.md`:
++
++```text
++Lama: **Phase 0 — Pra-coding (dokumen desain).** Belum ada kode aplikasi.
++Baru: **Phase 0 — Selesai.** Scaffold Laravel 13 + Docker dev + suite hijau. Lanjut Phase 1 (Foundation).
++```
++
++```bash
++git add -A
++git commit -m "chore: phase 0 done (gates green) — ready for phase 1"
++git log --oneline -n 6
++```
++
++Expected: 6 commit Phase 0 terlihat (docs, docker, scaffold, packages, smoke, done).
++
++---
++
++## Self-Review
++
++1. **Spec coverage:** Rencana ini hanya mengeksekusi DEPLOYMENT.md §3 (Docker dev) + prasyarat tooling TESTING.md (Pest/Pint/PHPStan). Auth, tenancy, RBAC, domain event, dan seluruh modul lain eksplisit di luar scope — masing-masing menunggu rencana Phase 1+. Tidak ada gap dalam Phase 0.
++2. **Placeholder scan:** Setiap langkah berisi perintah/file/expected output konkret. Satu-satunya titik adaptasi (versi mayor Spatie, baris `phpunit.xml`, perintah migrate env testing) memiliki instruksi deterministik + kriteria berhenti. Catatan penundaan (Tailwind penuh, queue worker, Sanctum) adalah keputusan scope eksplisit, bukan placeholder.
++3. **Type consistency:** Nama service (`app`, `web`, `db`), kredensial (`webvolunteer/secret`), nama DB (`webvolunteer`, `webvolunteer_test`), dan key `.env` identik di semua task. Nama file rencana konsisten (`2026-09-14-phase0-dev-scaffold.md`).
+diff --git a/webvolunteer-prompt.md b/webvolunteer-prompt.md
+new file mode 100644
+index 0000000..d4a5141
+--- /dev/null
++++ b/webvolunteer-prompt.md
+@@ -0,0 +1,2372 @@
++# PROJECT: Multi-Event Volunteer & Event Workforce Management Platform
++
++Bangun sebuah **platform web multi-event** untuk mengelola recruitment, seleksi, penempatan, scheduling, attendance, komunikasi, dan evaluasi volunteer/crew untuk berbagai macam event seperti:
++
++- Music festival
++- Concert
++- Campus event
++- Community event
++- Sport event
++- Creative festival
++- Conference
++- Charity event
++- Exhibition
++- Public event
++
++Platform harus dirancang sebagai **production-ready multi-tenant application** yang aman, scalable, maintainable, responsive, dan mudah dikembangkan.
++
++Jangan membuat aplikasi sebagai website single-event.
++
++Satu aplikasi harus mampu menangani:
++
++```text
++Platform
++│
++├── Organizer A
++│   ├── Event A1
++│   ├── Event A2
++│   └── Event A3
++│
++├── Organizer B
++│   ├── Event B1
++│   └── Event B2
++│
++└── Organizer C
++    └── Event C1
++```
++
++Semua data harus memiliki isolation berdasarkan ownership dan event scope.
++
++---
++
++# 1. PRODUCT VISION
++
++Platform harus menjadi **centralized event workforce platform**.
++
++Tujuan utama:
++
++1. Organizer dapat membuat dan mengelola banyak event.
++2. Satu event dapat memiliki banyak division, role, shift, dan volunteer.
++3. Volunteer dapat mengikuti banyak event menggunakan satu akun.
++4. Organizer dapat mengelola seluruh recruitment dan operasional volunteer.
++5. Platform dapat digunakan kembali untuk event berikutnya tanpa membuat aplikasi baru.
++6. Data antar organizer harus terisolasi.
++7. Security harus diterapkan sejak level database hingga frontend.
++8. Semua business-critical operation harus memiliki transaction dan validation.
++9. Sistem harus mampu menangani concurrent registration.
++10. Sistem harus siap dikembangkan menjadi SaaS / technology platform.
++
++---
++
++# 2. USER TYPES
++
++Gunakan **RBAC + Permission + Resource Ownership + Event Scope**.
++
++## Super Admin
++
++Akses global platform.
++
++Dapat:
++
++- Mengelola seluruh user
++- Mengelola organizer
++- Mengelola seluruh event
++- Mengelola permission
++- Mengelola system settings
++- Suspend account
++- Activate account
++- Melihat audit log
++- Melihat security log
++- Melihat platform analytics
++- Melakukan moderation
++- Melakukan maintenance operation
++
++Super Admin adalah satu-satunya role dengan akses lintas seluruh tenant.
++
++---
++
++# 3. ORGANIZER / TENANT
++
++Organizer merupakan tenant utama.
++
++Contoh:
++
++```text
++Organizer A
++Organizer B
++Organizer C
++```
++
++Setiap organizer memiliki:
++
++- Profile
++- Logo
++- Description
++- Contact
++- Email
++- Phone
++- Social media
++- Website
++- Branding
++- Members
++- Events
++- Reports
++
++Organizer tidak boleh mengakses tenant lain.
++
++---
++
++# 4. ORGANIZER MEMBER
++
++Satu organizer dapat memiliki banyak staff.
++
++Contoh:
++
++```text
++Organizer A
++│
++├── Owner
++├── Event Manager
++├── Volunteer Coordinator
++├── HR
++├── Supervisor
++└── Staff
++```
++
++Permission harus configurable.
++
++Contoh:
++
++```text
++event.create
++event.update
++event.delete
++registration.read
++registration.update
++volunteer.assign
++attendance.read
++announcement.create
++report.export
++```
++
++Jangan hardcode seluruh permission di frontend.
++
++Authorization harus selalu diverifikasi di backend.
++
++---
++
++# 5. VOLUNTEER
++
++Satu user volunteer dapat mengikuti banyak event.
++
++Contoh:
++
++```text
++Volunteer A
++├── Event A → Artist Liaison
++├── Event B → Registration
++├── Event C → Stage Crew
++└── Event D → Runner
++```
++
++Volunteer memiliki:
++
++- Profile
++- Skills
++- Experience
++- Education
++- Availability
++- Portfolio
++- Social links
++- Emergency contact sesuai kebutuhan event
++- Event history
++- Attendance history
++- Certificate history
++- Rating / evaluation
++
++Volunteer hanya boleh mengubah data miliknya sendiri.
++
++---
++
++# 6. EVENT
++
++Setiap organizer dapat memiliki unlimited event sesuai package/subscription.
++
++Event fields minimal:
++
++- ID
++- Organizer ID
++- Name
++- Slug
++- Description
++- Banner
++- Thumbnail
++- Category
++- Venue
++- Address
++- Latitude / longitude jika diperlukan
++- Start date
++- End date
++- Registration start
++- Registration end
++- Timezone
++- Status
++- Capacity
++- Contact information
++- Terms
++- Privacy notice
++- Publish status
++
++Status:
++
++```text
++Draft
++Published
++Registration Open
++Registration Closed
++Ongoing
++Completed
++Cancelled
++Archived
++```
++
++Gunakan valid state transition.
++
++Contoh:
++
++```text
++Draft
++↓
++Published
++↓
++Registration Open
++↓
++Registration Closed
++↓
++Ongoing
++↓
++Completed
++```
++
++Jangan memungkinkan status invalid hanya melalui manipulasi request.
++
++---
++
++# 7. EVENT BRANDING
++
++Setiap event dapat memiliki branding sendiri:
++
++- Logo
++- Banner
++- Primary color
++- Secondary color
++- Typography preference
++- Event description
++- Sponsor section
++- Social media links
++
++Event branding tidak boleh mempengaruhi event lain.
++
++---
++
++# 8. EVENT DIVISION
++
++Setiap event dapat mempunyai banyak division.
++
++Contoh event musik:
++
++```text
++Music Festival
++│
++├── Registration
++├── Stage
++├── Artist Liaison
++├── Security
++├── Crowd Control
++├── Hospitality
++├── Documentation
++├── Social Media
++├── Merchandise
++├── Runner
++├── Medical
++└── Technical
++```
++
++Division memiliki:
++
++- Name
++- Description
++- Supervisor
++- Status
++- Event ID
++
++---
++
++# 9. VOLUNTEER ROLE
++
++Setiap division dapat mempunyai banyak role.
++
++Contoh:
++
++```text
++Artist Liaison
++├── Artist Liaison A
++├── Artist Liaison B
++└── Artist Liaison C
++```
++
++Role memiliki:
++
++- Name
++- Description
++- Division
++- Capacity
++- Requirements
++- Skills
++- Age requirement jika diperlukan
++- Schedule
++- Location
++- Active status
++
++Role quota harus dikontrol backend dan database.
++
++---
++
++# 10. CUSTOM REGISTRATION FORM
++
++Organizer dapat membuat form pendaftaran custom untuk event.
++
++Field types:
++
++- Text
++- Textarea
++- Number
++- Email
++- Phone
++- Date
++- Time
++- Select
++- Multi Select
++- Radio
++- Checkbox
++- URL
++- File upload
++
++Setiap field:
++
++- Label
++- Description
++- Type
++- Required
++- Validation rule
++- Placeholder
++- Sort order
++- Active status
++
++Jangan menyimpan arbitrary HTML tanpa sanitization.
++
++---
++
++# 11. VOLUNTEER REGISTRATION FLOW
++
++Flow:
++
++```text
++Browse Event
++↓
++Event Detail
++↓
++Select Role
++↓
++Registration Form
++↓
++Validation
++↓
++Submit
++↓
++Pending
++↓
++Review
++↓
++Accepted / Rejected / Waitlisted
++↓
++Assignment
++↓
++Schedule
++↓
++Attendance
++↓
++Evaluation
++↓
++Certificate
++```
++
++Status:
++
++```text
++Pending
++Under Review
++Accepted
++Rejected
++Waitlisted
++Cancelled
++Withdrawn
++```
++
++Status transition harus dikontrol oleh backend.
++
++Volunteer tidak boleh mengubah status registration menjadi Accepted melalui API request.
++
++---
++
++# 12. DUPLICATE REGISTRATION PROTECTION
++
++Sistem harus mencegah:
++
++- User mendaftar event yang sama dua kali
++- Duplicate accepted assignment
++- Duplicate active registration
++- Duplicate attendance
++- Duplicate certificate
++
++Gunakan kombinasi:
++
++- Backend validation
++- Unique database constraints
++- Transaction
++- Idempotency
++
++Jangan mengandalkan JavaScript frontend.
++
++---
++
++# 13. QUOTA MANAGEMENT
++
++Setiap event dan role dapat memiliki quota.
++
++Contoh:
++
++```text
++Artist Liaison
++Quota: 20
++
++Accepted: 20
++
++Available: 0
++```
++
++Ketika quota penuh:
++
++- Registration tetap dapat ditutup
++- Candidate dapat masuk waitlist
++- Tidak boleh menerima volunteer ke role tersebut secara ilegal
++
++Gunakan database transaction + row locking / atomic update sesuai database.
++
++Harus aman terhadap:
++
++```text
++User A → register
++User B → register
++User C → register
++
++secara bersamaan
++```
++
++Tidak boleh terjadi:
++
++```text
++Quota = 20
++Accepted = 21
++```
++
++---
++
++# 14. CONCURRENCY / RACE CONDITION
++
++Secara khusus testing:
++
++- Concurrent registration
++- Concurrent acceptance
++- Concurrent assignment
++- Concurrent cancellation
++- Concurrent check-in
++
++Gunakan transaction pada operasi kritis.
++
++Jangan membuat logic:
++
++```text
++if quota_available:
++    create_registration()
++```
++
++tanpa transaction/locking.
++
++---
++
++# 15. VOLUNTEER SELECTION
++
++Organizer dapat:
++
++- Search
++- Filter
++- Sort
++- Review candidate
++- View profile
++- View experience
++- Accept
++- Reject
++- Waitlist
++- Assign role
++- Reassign role
++- Bulk action
++
++Bulk action harus tetap melewati authorization dan validation.
++
++---
++
++# 16. ROLE ASSIGNMENT
++
++Volunteer dapat diberikan assignment:
++
++```text
++Event
++↓
++Division
++↓
++Role
++↓
++Shift
++↓
++Location
++↓
++Supervisor
++```
++
++Assignment harus memiliki history.
++
++Contoh:
++
++```text
++Assigned
++→ Reassigned
++→ Confirmed
++→ Completed
++```
++
++Jangan menghapus history assignment secara permanen tanpa alasan audit.
++
++---
++
++# 17. SHIFT MANAGEMENT
++
++Organizer dapat membuat:
++
++- Shift
++- Date
++- Start time
++- End time
++- Location
++- Capacity
++- Supervisor
++
++Contoh:
++
++```text
++18 September
++
++16:00 - 18:00
++Registration Gate A
++
++18:00 - 20:00
++Crowd Control
++
++20:00 - 22:00
++Stage Support
++```
++
++Volunteer melihat hanya shift yang relevan dengan assignment-nya.
++
++---
++
++# 18. SCHEDULE
++
++Buat personal schedule untuk volunteer.
++
++Contoh:
++
++```text
++MY EVENT SCHEDULE
++
++17 Sept
++16:00 - 18:00
++Registration Gate A
++
++17 Sept
++20:00 - 23:00
++Artist Liaison
++
++18 Sept
++15:00 - 18:00
++Runner
++```
++
++Organizer memiliki centralized schedule management.
++
++---
++
++# 19. QR CHECK-IN / CHECK-OUT
++
++Implementasikan attendance menggunakan QR.
++
++Flow:
++
++```text
++Volunteer
++↓
++Show QR / Scan QR
++↓
++Validate
++↓
++Check-in
++↓
++Working
++↓
++Check-out
++```
++
++Validasi:
++
++- Event
++- Assignment
++- Shift
++- Time window
++- User
++- Attendance status
++
++Jangan menerima arbitrary user ID dari client.
++
++---
++
++# 20. ATTENDANCE ANTI-FRAUD
++
++Pertimbangkan:
++
++- Signed QR token
++- Short-lived token
++- Expiration
++- Replay protection
++- Server-side validation
++- Rate limiting
++
++Jangan menyimpan credential rahasia di QR secara plaintext.
++
++---
++
++# 21. ANNOUNCEMENT
++
++Organizer dapat membuat announcement.
++
++Target:
++
++- All event volunteers
++- Division
++- Role
++- Specific volunteer
++- Specific shift
++
++Announcement memiliki:
++
++- Title
++- Message
++- Target
++- Created by
++- Published at
++- Expiry
++
++---
++
++# 22. NOTIFICATION
++
++Notification center:
++
++- Registration submitted
++- Registration accepted
++- Registration rejected
++- Role assignment
++- Schedule change
++- Announcement
++- Event cancellation
++- Shift reminder
++- Attendance reminder
++- Certificate available
++
++Arsitektur harus memungkinkan integrasi:
++
++- Email
++- WhatsApp
++- Push notification
++
++Gunakan queue/background job untuk proses asynchronous.
++
++---
++
++# 23. ARTIST LIAISON MODULE
++
++Khusus event musik, sediakan optional module.
++
++Data artist:
++
++- Artist name
++- Arrival
++- Departure
++- Venue
++- Hotel jika diperlukan
++- Transport
++- Requirements
++- Assigned liaison
++- Status
++
++Liaison hanya dapat melihat data yang diperlukan untuk pekerjaannya.
++
++Jangan expose data internal artist kepada seluruh volunteer.
++
++---
++
++# 24. INCIDENT MANAGEMENT
++
++Sediakan incident reporting.
++
++Contoh:
++
++```text
++Medical
++Security
++Crowd
++Lost & Found
++Technical
++Other
++```
++
++Incident:
++
++- Type
++- Priority
++- Location
++- Description
++- Attachment
++- Reporter
++- Assignee
++- Status
++- Timestamp
++
++Priority:
++
++```text
++Low
++Medium
++High
++Critical
++```
++
++Status:
++
++```text
++Open
++Assigned
++In Progress
++Resolved
++Closed
++```
++
++---
++
++# 25. LOST & FOUND
++
++Volunteer atau staff dapat melaporkan:
++
++- Lost item
++- Found item
++- Location
++- Time
++- Description
++- Photo
++- Status
++
++Data harus dibatasi berdasarkan event.
++
++---
++
++# 26. VOLUNTEER REPUTATION
++
++Simpan event history.
++
++Contoh:
++
++```text
++Events Joined: 12
++Attendance Rate: 96%
++Completed Events: 10
++Average Rating: 4.8
++```
++
++Gunakan rating hanya untuk kebutuhan yang sah dan hindari expose informasi pribadi secara berlebihan.
++
++---
++
++# 27. VOLUNTEER TALENT POOL
++
++Organizer dapat mencari volunteer berdasarkan:
++
++- Experience
++- Skill
++- Role
++- Event history
++- Availability
++- Attendance
++- Rating
++
++Namun organizer hanya boleh melihat informasi volunteer yang memang diizinkan oleh privacy rules.
++
++Implementasikan:
++
++- Profile visibility
++- Data minimization
++- Consent jika diperlukan
++
++---
++
++# 28. CERTIFICATE SYSTEM
++
++Setelah event selesai:
++
++```text
++Event Completed
++↓
++Validate attendance
++↓
++Generate certificate
++↓
++Unique certificate ID
++↓
++QR verification
++```
++
++Public verification page:
++
++```text
++Certificate Verified
++Event
++Volunteer
++Role
++Completion date
++```
++
++Jangan expose informasi sensitif yang tidak diperlukan.
++
++---
++
++# 29. REPORTING
++
++Organizer dashboard harus menampilkan:
++
++### Recruitment
++
++- Total registration
++- Pending
++- Accepted
++- Rejected
++- Waitlisted
++
++### Capacity
++
++- Total quota
++- Filled quota
++- Available quota
++
++### Attendance
++
++- Present
++- Late
++- Absent
++- Completion rate
++
++### Division
++
++- Registration
++- Stage
++- Security
++- Artist Liaison
++- Documentation
++- Technical
++
++### Event Performance
++
++- Total applicants
++- Acceptance rate
++- Attendance rate
++- Role fill rate
++
++Gunakan server-side aggregation untuk data besar.
++
++---
++
++# 30. EXPORT
++
++Organizer dapat export data sesuai permission:
++
++- CSV
++- XLSX
++- PDF
++
++Export harus:
++
++- Authorization checked
++- Event scoped
++- Logged
++- Rate limited
++
++Jangan izinkan export seluruh database tanpa authorization.
++
++---
++
++# 31. PUBLIC EVENT PAGE
++
++Setiap event memiliki public URL:
++
++```text
++/events/{slug}
++```
++
++Public page menampilkan:
++
++- Banner
++- Description
++- Venue
++- Date
++- Schedule
++- Available roles
++- Requirements
++- Organizer information
++- Sponsor
++- Registration CTA
++
++Jangan tampilkan:
++
++- Email volunteer
++- Nomor telepon volunteer
++- Internal notes
++- Internal organizer data
++- Candidate ranking
++- Private assignment information
++
++---
++
++# 32. SEARCH
++
++Event search:
++
++- Keyword
++- Category
++- City
++- Date
++- Organizer
++- Availability
++- Status
++
++Gunakan pagination.
++
++Jangan load seluruh database ke browser.
++
++---
++
++# 33. MULTI-TENANT SECURITY
++
++Ini merupakan requirement paling penting.
++
++Semua request harus mengikuti:
++
++```text
++User
++↓
++Organization
++↓
++Event
++↓
++Resource
++```
++
++Contoh:
++
++```text
++Organizer A
++└── Event A
++
++Organizer B
++└── Event B
++```
++
++Organizer A tidak boleh:
++
++```text
++GET /events/B
++GET /registrations/B
++GET /assignments/B
++GET /attendance/B
++```
++
++meskipun mengetahui ID.
++
++Implementasikan:
++
++- Tenant scoping
++- Ownership checks
++- Policy / authorization
++- Query scoping
++- Resource binding
++- Backend validation
++
++Jangan hanya menyembunyikan data di frontend.
++
++---
++
++# 34. IDOR PROTECTION
++
++Test:
++
++```text
++User A
++GET /api/events/123
++
++change ID:
++
++GET /api/events/124
++```
++
++Jika Event 124 bukan milik user tersebut:
++
++```text
++403 Forbidden
++```
++
++atau response yang tidak membocorkan keberadaan resource sesuai policy.
++
++Lakukan hal yang sama pada:
++
++- Registration
++- Volunteer
++- Assignment
++- Schedule
++- Attendance
++- Certificate
++- Incident
++- Announcement
++- Export
++
++---
++
++# 35. AUTHENTICATION SECURITY
++
++Implementasikan:
++
++- Secure registration
++- Login
++- Logout
++- Forgot password
++- Reset password
++- Email verification
++- Session management
++- Password hashing
++- Session expiration
++- Re-authentication untuk operasi sensitif
++
++Password tidak boleh:
++
++- plaintext
++- reversible encryption
++- muncul di log
++- muncul di API response
++
++---
++
++# 36. BRUTE FORCE PROTECTION
++
++Untuk endpoint sensitif:
++
++- Login
++- Password reset
++- OTP
++- Verification
++- API authentication
++
++Terapkan:
++
++- Rate limit
++- Temporary lockout
++- Monitoring
++- Suspicious activity detection
++
++Response jangan membocorkan apakah email/account tertentu terdaftar.
++
++---
++
++# 37. SESSION SECURITY
++
++Gunakan:
++
++- Secure cookies
++- HttpOnly
++- SameSite
++- Session rotation
++- Expiration
++- Logout invalidation
++
++Hindari menyimpan sensitive authentication token di localStorage jika arsitektur tidak membutuhkannya.
++
++---
++
++# 38. CSRF
++
++Semua request state-changing harus terlindungi dari CSRF sesuai arsitektur authentication.
++
++Test:
++
++- Create
++- Update
++- Delete
++- Accept
++- Reject
++- Assign
++- Check-in
++
++---
++
++# 39. XSS PROTECTION
++
++Protect against:
++
++- Stored XSS
++- Reflected XSS
++- DOM XSS
++
++Semua user-generated content harus di-escape sesuai konteks.
++
++Jangan merender arbitrary HTML dari input user.
++
++Jika rich text diperlukan:
++
++- gunakan allowlist sanitizer
++- strip dangerous HTML
++- strip scripts
++- strip event handlers
++- sanitize URL scheme
++
++---
++
++# 40. SQL INJECTION
++
++Jangan membuat raw SQL dari input user secara langsung.
++
++Gunakan:
++
++- Parameterized queries
++- ORM
++- Query builder
++
++Jika raw SQL memang diperlukan, semua parameter harus bound.
++
++---
++
++# 41. MASS ASSIGNMENT
++
++Jangan biarkan user mengirim:
++
++```json
++{
++  "role": "super_admin",
++  "organization_id": 123,
++  "is_verified": true
++}
++```
++
++lalu field tersebut otomatis diterapkan.
++
++Gunakan:
++
++- Explicit allowlist
++- DTO / Request validation
++- Server-controlled fields
++
++---
++
++# 42. PRIVILEGE ESCALATION
++
++User tidak boleh dapat mengubah:
++
++- role sendiri
++- organization sendiri
++- owner
++- permission
++- event ownership
++- tenant ID
++- security flags
++
++kecuali melalui workflow resmi yang di-authorize.
++
++---
++
++# 43. FILE UPLOAD SECURITY
++
++Untuk file upload:
++
++- MIME validation
++- Extension validation
++- File signature validation
++- Max file size
++- Random generated filename
++- Safe storage
++- Non-executable storage
++- Antivirus scanning bila diperlukan
++- Image reprocessing bila diperlukan
++- Prevent path traversal
++- Prevent arbitrary file overwrite
++
++Jangan menggunakan original filename sebagai path internal.
++
++---
++
++# 44. SECURITY HEADERS
++
++Production environment harus memiliki security headers yang sesuai:
++
++- Content-Security-Policy
++- Strict-Transport-Security
++- X-Content-Type-Options
++- Referrer-Policy
++- Permissions-Policy
++- Frame protection
++- Secure cookie configuration
++
++Jangan menambahkan CSP secara asal; sesuaikan dengan asset/API yang benar-benar digunakan.
++
++---
++
++# 45. API SECURITY
++
++API harus menggunakan:
++
++- Authentication middleware
++- Authorization middleware
++- Input validation
++- Rate limiting
++- Pagination
++- Resource scoping
++- Consistent HTTP status code
++- Safe error response
++
++Jangan expose:
++
++- stack trace
++- SQL error
++- environment variables
++- server path
++- secret
++- internal token
++- password hash
++
++---
++
++# 46. MASS REQUEST / ABUSE PROTECTION
++
++Perhatikan:
++
++- Registration spam
++- Login spam
++- OTP spam
++- Export abuse
++- Notification spam
++- File upload abuse
++
++Gunakan:
++
++- Rate limiting
++- Queue
++- CAPTCHA bila diperlukan
++- Request size limit
++- Pagination
++- Abuse monitoring
++
++---
++
++# 47. SSRF PROTECTION
++
++Jika platform mengambil external URL:
++
++- URL allowlist sesuai kebutuhan
++- Validate protocol
++- Block internal IP ranges
++- Block localhost
++- Block metadata endpoints
++- Limit redirects
++- Validate DNS resolution sesuai arsitektur
++
++Jangan melakukan server-side fetch terhadap arbitrary URL dari user tanpa validasi.
++
++---
++
++# 48. URL / REDIRECT SECURITY
++
++Jangan menggunakan redirect URL mentah dari user.
++
++Cegah:
++
++- Open redirect
++- javascript:
++- data:
++- file:
++- arbitrary protocol
++
++Gunakan allowlist domain atau internal route.
++
++---
++
++# 49. ERROR HANDLING
++
++Production response harus aman.
++
++Jangan menampilkan:
++
++```text
++SQLSTATE
++stack trace
++server directory
++database name
++environment value
++secret
++```
++
++Gunakan:
++
++```text
++Generic user-facing message
+++
++Internal error ID
+++
++Server-side logging
++```
++
++Buat:
++
++- 401
++- 403
++- 404
++- 419 / CSRF
++- 422
++- 429
++- 500
++
++---
++
++# 50. DATABASE SECURITY
++
++Gunakan:
++
++- Foreign keys
++- Unique constraints
++- Indexes
++- Check constraints bila tersedia
++- Transactions
++- Referential integrity
++
++Minimal tables:
++
++```text
++users
++organizations
++organization_members
++roles
++permissions
++role_permissions
++user_roles
++
++events
++event_divisions
++event_roles
++event_shifts
++event_custom_fields
++event_custom_field_options
++
++volunteer_profiles
++registrations
++registration_answers
++registration_status_histories
++
++assignments
++attendance
++attendance_logs
++
++announcements
++notifications
++
++incidents
++lost_found_items
++
++certificates
++certificate_verifications
++
++audit_logs
++security_logs
++```
++
++---
++
++# 51. DATABASE OWNERSHIP
++
++Semua resource penting harus dapat ditelusuri ke tenant/event.
++
++Contoh:
++
++```text
++registration
++→ event_id
++→ event.organization_id
++```
++
++Hindari resource penting yang kehilangan hubungan tenant.
++
++Gunakan foreign key.
++
++---
++
++# 52. TRANSACTIONAL INTEGRITY
++
++Gunakan transaction untuk:
++
++- Accept registration
++- Assign role
++- Update quota
++- Registration cancellation
++- Attendance check-in
++- Attendance check-out
++- Certificate generation state
++- Bulk assignment
++
++Jika salah satu langkah gagal, state harus rollback dengan benar.
++
++---
++
++# 53. IDEMPOTENCY
++
++Untuk request tertentu seperti:
++
++- Registration submit
++- Check-in
++- Check-out
++- Payment jika ditambahkan
++- Notification dispatch
++
++gunakan idempotency mechanism jika diperlukan.
++
++Double click tidak boleh menciptakan dua registration.
++
++---
++
++# 54. AUDIT LOG
++
++Catat aktivitas penting:
++
++```text
++login
++logout
++create_event
++update_event
++delete_event
++create_role
++update_role
++registration_created
++registration_accepted
++registration_rejected
++assignment_created
++assignment_updated
++attendance_created
++user_role_changed
++permission_changed
++export_created
++security_event
++```
++
++Audit log berisi:
++
++- Actor
++- Organization
++- Event
++- Action
++- Resource type
++- Resource ID
++- Old value
++- New value
++- IP
++- User agent
++- Timestamp
++- Request ID
++
++Jangan log password, token, secret, atau data sensitif secara berlebihan.
++
++Audit log tidak boleh diubah oleh organizer.
++
++---
++
++# 55. SECURITY LOG
++
++Pisahkan audit business activity dengan security events.
++
++Security event contoh:
++
++- Failed login
++- Account lock
++- Invalid token
++- Forbidden access
++- Rate limit exceeded
++- Suspicious request
++- File upload rejected
++- CSRF violation
++
++---
++
++# 56. PRIVACY
++
++Gunakan principle of least privilege.
++
++Volunteer profile harus memiliki visibility rules.
++
++Jangan memperlihatkan:
++
++- phone number
++- personal email
++- emergency contact
++- private notes
++
++ke organizer/member yang tidak membutuhkan data tersebut.
++
++Kumpulkan data seminimal mungkin.
++
++Sediakan mekanisme untuk data retention/deletion sesuai kebutuhan platform dan regulasi yang berlaku.
++
++---
++
++# 57. DATA RETENTION
++
++Buat kebijakan retention yang configurable.
++
++Contoh:
++
++- Registration history
++- Attendance
++- Audit log
++- Deleted accounts
++- Uploaded files
++
++Jangan langsung hard delete data penting yang dibutuhkan audit.
++
++Gunakan soft delete atau archival sesuai kebutuhan.
++
++---
++
++# 58. PERFORMANCE
++
++Aplikasi harus tetap performant saat:
++
++- 100 event
++- 1,000 event
++- 10,000 event
++- 100,000 volunteer
++- 1,000,000 registration
++
++Gunakan:
++
++- Pagination
++- Indexing
++- Query optimization
++- Eager loading
++- Caching
++- Queue
++- Background job
++- Aggregation
++- Lazy loading sesuai kebutuhan
++
++Deteksi dan hilangkan N+1 query.
++
++---
++
++# 59. FRONTEND SECURITY
++
++Frontend bukan security boundary.
++
++Semua:
++
++- permission
++- authorization
++- quota
++- ownership
++- status transition
++
++harus divalidasi backend.
++
++UI hanya mencerminkan permission yang sudah diberikan.
++
++---
++
++# 60. ACCESSIBILITY
++
++Target minimal:
++
++- Keyboard navigation
++- Semantic HTML
++- Form labels
++- Focus state
++- Error message
++- Accessible modal
++- Color contrast
++- Screen reader compatibility
++
++---
++
++# 61. RESPONSIVE DESIGN
++
++Support:
++
++- Mobile
++- Tablet
++- Desktop
++
++Prioritaskan mobile untuk volunteer.
++
++Organizer dashboard dapat dioptimalkan untuk desktop tetapi tetap usable pada tablet/mobile.
++
++---
++
++# 62. UX
++
++Setiap form harus memiliki:
++
++- Loading state
++- Validation state
++- Success state
++- Error state
++- Empty state
++- Disabled state
++- Confirmation untuk destructive action
++
++Cegah double submit.
++
++Tetapi tetap lakukan protection backend.
++
++---
++
++# 63. QUEUE / BACKGROUND JOB
++
++Gunakan background processing untuk:
++
++- Email
++- WhatsApp notification
++- Certificate generation
++- Large export
++- Bulk notification
++- Image processing
++- Report generation
++
++User tidak perlu menunggu proses berat selesai dalam HTTP request.
++
++---
++
++# 64. OBSERVABILITY
++
++Implementasikan:
++
++- Application logs
++- Security logs
++- Audit logs
++- Request ID
++- Error tracking
++- Queue monitoring
++- Performance monitoring
++
++Jangan memasukkan secret ke logs.
++
++---
++
++# 65. TESTING
++
++Buat automated tests.
++
++## Unit Test
++
++Test:
++
++- Quota calculation
++- Registration rules
++- Status transition
++- Permission
++- Assignment logic
++- Attendance logic
++
++## Feature / Integration Test
++
++Test:
++
++- Register
++- Login
++- Create event
++- Create role
++- Registration
++- Accept
++- Reject
++- Assign
++- Check-in
++- Check-out
++- Certificate
++
++## Authorization Test
++
++Test setiap role:
++
++```text
++Super Admin
++Organizer Owner
++Organizer Staff
++Volunteer
++Guest
++```
++
++Pastikan setiap endpoint memiliki expected authorization.
++
++---
++
++# 66. SECURITY TESTING
++
++Secara khusus test:
++
++```text
++IDOR
++Privilege escalation
++Mass assignment
++SQL injection
++XSS
++CSRF
++SSRF
++Open redirect
++File upload vulnerability
++Brute force
++Rate limiting
++Session invalidation
++Duplicate registration
++Race condition
++Broken access control
++Tenant isolation
++Information disclosure
++```
++
++Jangan hanya menguji happy path.
++
++---
++
++# 67. TENANT ISOLATION TEST
++
++Wajib membuat test:
++
++```text
++Organizer A
++Event A
++
++Organizer B
++Event B
++```
++
++Pastikan:
++
++```text
++Organizer A cannot read Event B
++Organizer A cannot modify Event B
++Organizer A cannot delete Event B
++Organizer A cannot read Registration B
++Organizer A cannot export Event B
++Organizer A cannot manipulate Attendance B
++```
++
++Ini merupakan security-critical test.
++
++---
++
++# 68. END-TO-END TEST
++
++### Volunteer flow
++
++```text
++Register
++→ Verify email
++→ Login
++→ Browse event
++→ Select role
++→ Submit registration
++→ Check status
++→ Receive acceptance
++→ View schedule
++→ Check-in
++→ Check-out
++→ Receive certificate
++```
++
++### Organizer flow
++
++```text
++Login
++→ Create event
++→ Create divisions
++→ Create roles
++→ Create shifts
++→ Open registration
++→ Review candidates
++→ Accept
++→ Assign
++→ Monitor attendance
++→ Close event
++→ Generate report
++```
++
++### Admin flow
++
++```text
++Login
++→ Manage organizers
++→ Manage users
++→ Manage permissions
++→ Review logs
++→ Suspend user
++→ Audit actions
++```
++
++---
++
++# 69. TEST EDGE CASES
++
++Test:
++
++- Event deleted
++- Event cancelled
++- Registration closed
++- Role disabled
++- Role quota full
++- Volunteer already registered
++- Volunteer withdraws
++- Organizer suspended
++- User suspended
++- Session expired
++- Invalid token
++- Expired QR
++- Duplicate QR
++- Double submit
++- Concurrent registration
++- Concurrent acceptance
++- Large export
++- Invalid file
++- Large file
++- Malicious file
++- Unauthorized API request
++
++---
++
++# 70. DEPENDENCY SECURITY
++
++Before production:
++
++- Dependency audit
++- Remove unused dependencies
++- Update vulnerable packages
++- Lock dependencies
++- Review transitive dependencies
++- Run static analysis
++- Run lint
++- Run type checks jika digunakan
++- Run test suite
++
++Jangan mengabaikan critical/high security vulnerability tanpa documented reason.
++
++---
++
++# 71. SECRETS
++
++Jangan pernah commit:
++
++```text
++.env
++database password
++API key
++JWT secret
++OAuth secret
++private key
++SMTP password
++webhook secret
++cloud credentials
++```
++
++Gunakan environment variables / secret management.
++
++---
++
++# 72. PRODUCTION HARDENING
++
++Production:
++
++```text
++DEBUG = false
++HTTPS = required
++Secure cookies = enabled
++Rate limiting = enabled
++Logging = enabled
++Error tracking = enabled
++Backups = enabled
++Database credentials = protected
++Secrets = externalized
++```
++
++Jangan menggunakan development credentials di production.
++
++---
++
++# 73. BACKUP & RECOVERY
++
++Siapkan:
++
++- Database backup
++- Backup schedule
++- Retention policy
++- Recovery procedure
++- Restore testing
++
++Backup tidak dianggap valid sampai dapat diuji restore.
++
++---
++
++# 74. DATABASE MIGRATION
++
++Semua perubahan schema harus menggunakan migration.
++
++Jangan mengedit production database secara manual tanpa documented migration.
++
++Migration harus:
++
++- Reversible bila memungkinkan
++- Tested
++- Backward compatible untuk deployment yang membutuhkan rolling update
++
++---
++
++# 75. API DESIGN
++
++Gunakan struktur:
++
++```text
++/api/auth/*
++/api/organizations/*
++/api/events/*
++/api/events/{event}/divisions/*
++/api/events/{event}/roles/*
++/api/events/{event}/shifts/*
++/api/events/{event}/registrations/*
++/api/events/{event}/assignments/*
++/api/events/{event}/attendance/*
++/api/notifications/*
++/api/reports/*
++/api/admin/*
++```
++
++Semua endpoint harus memiliki:
++
++```text
++Authentication
++Authorization
++Validation
++Tenant scope
++Event scope
++Rate limit sesuai kebutuhan
++```
++
++---
++
++# 76. RESOURCE OWNERSHIP
++
++Contoh:
++
++```text
++Organization
++    ↓
++Event
++    ↓
++Registration
++    ↓
++Assignment
++    ↓
++Attendance
++```
++
++Saat membaca atau mengubah resource, backend harus melakukan ownership chain validation.
++
++Jangan hanya:
++
++```text
++find(resource_id)
++```
++
++tetapi lakukan scoped query sesuai tenant/event.
++
++---
++
++# 77. PUBLIC / PRIVATE DATA SEPARATION
++
++Pisahkan:
++
++### Public
++
++- Event information
++- Venue
++- Schedule yang memang dipublikasikan
++- Organizer profile
++- Public roles
++
++### Private
++
++- Volunteer data
++- Candidate notes
++- Organizer internal notes
++- Internal schedule
++- Emergency contacts
++- Security incidents
++
++Tidak boleh terjadi accidental exposure.
++
++---
++
++# 78. ADMIN SAFETY
++
++Untuk operasi sangat sensitif:
++
++- Change permission
++- Delete organization
++- Suspend account
++- Impersonation jika nanti dibuat
++- Export sensitive data
++
++pertimbangkan:
++
++- Re-authentication
++- Confirmation
++- Audit
++- Reason logging
++
++---
++
++# 79. DATABASE CONSTRAINTS
++
++Gunakan constraint untuk menjaga data.
++
++Contoh:
++
++```text
++unique(user_id, event_id)
++```
++
++untuk mencegah duplicate registration.
++
++Tambahkan constraint yang sesuai untuk:
++
++- assignment
++- attendance
++- event slug
++- organization slug
++- certificate number
++
++---
++
++# 80. BUSINESS RULES
++
++Business rules harus berada di service/domain layer.
++
++Hindari menaruh semua logic di controller.
++
++Gunakan service seperti:
++
++```text
++EventService
++RegistrationService
++QuotaService
++AssignmentService
++AttendanceService
++CertificateService
++NotificationService
++AuditLogService
++SecurityService
++```
++
++Controller harus tetap tipis.
++
++---
++
++# 81. DOCUMENTATION
++
++Buat:
++
++```text
++README.md
++PRD.md
++ARCHITECTURE.md
++DATABASE.md
++SECURITY.md
++API.md
++TESTING.md
++DEPLOYMENT.md
++```
++
++Dokumentasikan:
++
++- Architecture
++- Database
++- Authentication
++- Authorization
++- Tenant isolation
++- API
++- Security
++- Deployment
++- Backup
++- Testing
++- Troubleshooting
++
++---
++
++# 82. DEVELOPMENT WORKFLOW
++
++Jangan langsung menulis seluruh aplikasi.
++
++Urutan:
++
++```text
++1. Requirement analysis
++2. PRD
++3. Architecture
++4. Threat model
++5. Database design
++6. Authorization matrix
++7. API design
++8. Authentication
++9. Multi-tenant foundation
++10. Organization
++11. Event
++12. Division
++13. Role
++14. Registration
++15. Quota
++16. Assignment
++17. Schedule
++18. Attendance
++19. Notification
++20. Certificate
++21. Reporting
++22. Frontend refinement
++23. Automated testing
++24. Security testing
++25. Performance testing
++26. Production hardening
++```
++
++Jangan membangun UI terlebih dahulu sebelum tenancy, authentication, authorization, dan database model jelas.
++
++---
++
++# 83. AUTHORIZATION MATRIX
++
++Sebelum implementasi, buat tabel permission:
++
++| Action | Super Admin | Organizer Owner | Organizer Staff | Volunteer | Guest |
++|---|---|---|---|---|---|
++| Create Organization | ✓ | - | - | - | - |
++| Create Event | ✓ | ✓ | sesuai permission | - | - |
++| Edit Event | ✓ | ✓ | sesuai permission | - | - |
++| Delete Event | ✓ | ✓ | - | - | - |
++| View Registration | ✓ | ✓ | sesuai permission | own only | - |
++| Accept Volunteer | ✓ | ✓ | sesuai permission | - | - |
++| Assign Volunteer | ✓ | ✓ | sesuai permission | - | - |
++| Check-in | ✓ | ✓ | ✓ | own only | - |
++| View Audit Log | ✓ | sesuai permission | - | - | - |
++
++Buat authorization matrix lengkap sebelum coding.
++
++---
++
++# 84. THREAT MODEL
++
++Identifikasi minimal:
++
++```text
++Broken Access Control
++Tenant Data Leakage
++Credential Theft
++Brute Force
++XSS
++CSRF
++SQL Injection
++SSRF
++File Upload Abuse
++Spam
++Race Condition
++Data Exposure
++Session Hijacking
++Privilege Escalation
++API Abuse
++```
++
++Untuk setiap threat:
++
++```text
++Threat
++Impact
++Likelihood
++Mitigation
++Test
++```
++
++---
++
++# 85. DEFINITION OF DONE
++
++Project hanya dianggap selesai jika:
++
++### Functional
++
++- Multi-organizer
++- Multi-event
++- Multi-role
++- Multi-user
++- Registration
++- Selection
++- Assignment
++- Shift
++- Attendance
++- Notification
++- Certificate
++- Reporting
++
++### Security
++
++- Authentication secure
++- RBAC
++- Permission system
++- Tenant isolation
++- Event ownership
++- IDOR protection
++- Privilege escalation protection
++- CSRF protection
++- XSS protection
++- SQL injection protection
++- SSRF protection
++- Rate limiting
++- File upload security
++- Session security
++- Secure headers
++- Audit logging
++- Security logging
++
++### Data Integrity
++
++- Foreign keys
++- Unique constraints
++- Transactions
++- Race condition protection
++- Idempotency
++- Duplicate protection
++
++### Quality
++
++- Unit tests
++- Integration tests
++- Authorization tests
++- Security tests
++- E2E tests
++- Static analysis
++- Dependency audit
++- Performance review
++- N+1 review
++
++### Production
++
++- DEBUG disabled
++- HTTPS
++- Secure cookies
++- Secrets protected
++- Backup
++- Restore test
++- Monitoring
++- Error tracking
++- Documentation
++
++---
++
++# 86. FINAL DEVELOPMENT RULES
++
++Ikuti prinsip:
++
++```text
++Security First
++↓
++Authorization First
++↓
++Tenant Isolation
++↓
++Server-side Validation
++↓
++Database Integrity
++↓
++Transaction & Concurrency Safety
++↓
++Business Logic
++↓
++Performance
++↓
++UX
++↓
++Testing
++```
++
++Jangan pernah menganggap fitur aman hanya karena:
++
++- tombol disembunyikan
++- route tidak ditampilkan
++- frontend melakukan validation
++- ID sulit ditebak
++- user menggunakan UUID
++- form memiliki CAPTCHA
++
++Security harus ditegakkan di backend.
++
++Jangan percaya data dari client.
++
++Jangan percaya role yang dikirim client.
++
++Jangan percaya tenant ID yang dikirim client.
++
++Jangan percaya event ID yang dikirim client.
++
++Semua harus diverifikasi dari authenticated server context.
++
++Setiap perubahan penting harus memiliki test.
++
++Setiap bug harus diperbaiki pada root cause, bukan dengan workaround sementara.
++
++Setiap fitur baru harus dievaluasi terhadap:
++
++**Authentication → Authorization → Tenant Isolation → Validation → Data Integrity → Concurrency → Privacy → Abuse Prevention → Logging → Testing**
++
++Target akhir adalah:
++
++**Production-ready multi-event platform yang secure-by-design, tenant-isolated, scalable, maintainable, responsive, tested, dan siap digunakan oleh banyak organizer serta event secara bersamaan.**
++
++Jangan menyatakan sistem "100% bebas bug" atau "100% aman". Sebagai gantinya, lakukan pengujian, hardening, security review, dan dokumentasikan risiko yang masih tersisa.
+\ No newline at end of file
