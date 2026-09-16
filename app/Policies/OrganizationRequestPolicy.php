@@ -7,6 +7,11 @@ use App\Models\User;
 
 class OrganizationRequestPolicy
 {
+    public function before(User $user): ?bool
+    {
+        return $user->hasRole('super_admin') ? true : null;
+    }
+
     public function create(User $user): bool
     {
         return true;

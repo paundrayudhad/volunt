@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ReviewOrganizationRequest;
 use App\Models\OrganizationRequest;
 use App\Services\OrganizationService;
 use Illuminate\Http\RedirectResponse;
@@ -22,25 +23,21 @@ class OrganizationRequestController extends Controller
         return view('admin.requests.index', ['antrean' => $antrean]);
     }
 
-    public function approve(OrganizationRequest $organizationRequest): RedirectResponse
+    public function approve(Request $request, OrganizationRequest $organizationRequest): RedirectResponse
     {
         abort_unless($organizationRequest->isPending(), 422, 'Pengajuan sudah diproses.');
 
-        $this->organizations->approve($organizationRequest, request()->user());
+        $this->organizations->approve($organizationRequest, $request->user());
 
         return redirect()->route('admin.requests.index')
             ->with('status', 'Pengajuan disetujui. Organisasi aktif dan pengaju menjadi owner.');
     }
 
-    public function reject(Request $request, OrganizationRequest $organizationRequest): RedirectResponse
+    public function reject(ReviewOrganizationRequest $request, OrganizationRequest $organizationRequest): RedirectResponse
     {
         abort_unless($organizationRequest->isPending(), 422, 'Pengajuan sudah diproses.');
 
-        $data = $request->validate([
-            'reason' => ['required', 'string', 'max:2000'],
-        ]);
-
-        $this->organizations->reject($organizationRequest, $request->user(), $data['reason']);
+        $this->organizations->reject($organizationRequest, $request->user(), $request->validated()['reason']);
 
         return redirect()->route('admin.requests.index')
             ->with('status', 'Pengajuan ditolak dengan alasan tercatat.');

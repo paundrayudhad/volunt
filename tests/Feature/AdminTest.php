@@ -200,6 +200,10 @@ it('archive dan activate mengubah status dan mencatat audit', function () {
 });
 
 it('non-admin tidak bisa mengakses panel admin', function () {
+    // Tamu sejati dicek lebih dulu sebelum actingAs apa pun:
+    // middleware auth berjalan duluan sehingga tamu diarahkan ke login.
+    $this->get(route('admin.requests.index'))->assertRedirect(route('login'));
+
     $biasa = User::factory()->create();
 
     $this->actingAs($biasa)->get(route('admin.requests.index'))->assertForbidden();
@@ -210,10 +214,6 @@ it('non-admin tidak bisa mengakses panel admin', function () {
 
     $this->actingAs($owner)->get(route('admin.requests.index'))->assertForbidden();
     $this->actingAs($owner)->get(route('admin.organizations.index'))->assertForbidden();
-
-    // Full suite memakai memori permission antar file (cache Spatie per proses),
-    // sehingga tamu cukup ditegaskan tidak mendapat 200/redirect masuk.
-    $this->get(route('admin.requests.index'))->assertForbidden();
 });
 
 it('log admin hanya baca dengan filter dan pagination', function () {
