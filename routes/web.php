@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Admin\LogController as AdminLogController;
+use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationController;
+use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizationRequestController;
 use App\Http\Controllers\OrganizationRequestController;
 use App\Http\Controllers\Organizer\InvitationController;
 use App\Http\Controllers\Organizer\MemberController;
@@ -46,6 +49,27 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('members/{member}', [MemberController::class, 'update'])->name('members.update');
         Route::delete('members/{member}', [MemberController::class, 'destroy'])->name('members.destroy');
     });
+});
+
+Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('requests', [AdminOrganizationRequestController::class, 'index'])->name('requests.index');
+    Route::post('requests/{organizationRequest}/approve', [AdminOrganizationRequestController::class, 'approve'])
+        ->middleware('password.confirm')
+        ->name('requests.approve');
+    Route::post('requests/{organizationRequest}/reject', [AdminOrganizationRequestController::class, 'reject'])
+        ->name('requests.reject');
+
+    Route::get('organizations', [AdminOrganizationController::class, 'index'])->name('organizations.index');
+    Route::post('organizations/{org}/suspend', [AdminOrganizationController::class, 'suspend'])
+        ->middleware('password.confirm')
+        ->name('organizations.suspend');
+    Route::post('organizations/{org}/archive', [AdminOrganizationController::class, 'archive'])
+        ->middleware('password.confirm')
+        ->name('organizations.archive');
+    Route::post('organizations/{org}/activate', [AdminOrganizationController::class, 'activate'])
+        ->name('organizations.activate');
+
+    Route::get('logs', [AdminLogController::class, 'index'])->name('logs.index');
 });
 
 require __DIR__.'/auth.php';
