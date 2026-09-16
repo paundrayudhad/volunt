@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\OrganizationFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -43,17 +44,9 @@ class Organization extends Model
         return $this->hasMany(OrganizationInvitation::class);
     }
 
-    /** @return HasMany<OrganizationRequest, $this> */
-    public function requests(): HasMany
+    /** @param  Builder<Organization>  $query */
+    public function scopeActive(Builder $query): Builder
     {
-        return $this->hasMany(OrganizationRequest::class);
-    }
-
-    /**
-     * @param  \Illuminate\Database\Eloquent\Builder<Organization>  $query
-     */
-    public function scopeActive($query): void
-    {
-        $query->where('status', 'active');
+        return $query->where('status', 'active');
     }
 }
