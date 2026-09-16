@@ -3,6 +3,7 @@
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
@@ -49,6 +50,17 @@ it('menolak login salah tanpa membocorkan email terdaftar', function () {
     $errorTerdaftar = $terdaftar->errors()->get('form.email');
     $errorTakTerdaftar = $takTerdaftar->errors()->get('form.email');
     expect($errorTerdaftar[0])->toBe($errorTakTerdaftar[0]);
+});
+
+it('mencatat failed_login ke security_logs', function () {
+    $user = User::factory()->create();
+
+    Volt::test('pages.auth.login')
+        ->set('form.email', $user->email)
+        ->set('form.password', 'salah-salah-salah')
+        ->call('login');
+
+    expect(DB::table('security_logs')->where('type', 'failed_login')->first())->not->toBeNull();
 });
 
 it('mengunci setelah 5x login gagal', function () {
