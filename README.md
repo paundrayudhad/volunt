@@ -32,7 +32,7 @@ Tanpa React/Vue SPA. Server-rendered agar hemat resource VPS.
 
 ## Status
 
-**Phase 0 — Selesai.** Scaffold Laravel 13 + Docker dev + suite hijau. Lanjut Phase 1 (Foundation).
+**Phase 1 — Selesai.** Auth + organization + membership + RBAC + isolation + suite hijau. Lanjut Phase 2 (Event).
 Lihat [PRD.md](PRD.md) dan peta dokumen di bawah.
 
 ## Quickstart Dev (rencana, setelah scaffold Phase 0)

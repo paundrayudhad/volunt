@@ -92,7 +92,10 @@ class MembershipService
     {
         abort_unless($inv->accepted_at === null && $inv->declined_at === null, 422, 'Undangan sudah diproses.');
         abort_if($inv->isExpired(), 422, 'Undangan sudah kedaluwarsa.');
-        abort_unless(strtolower($inv->email) === strtolower($user->email), 403, 'Undangan ini bukan untuk akun Anda.');
+
+        /** @phpstan-impure */
+        $emailCocok = fn (): bool => strtolower((string) $inv->email) === strtolower((string) $user->email);
+        abort_unless($emailCocok(), 403, 'Undangan ini bukan untuk akun Anda.');
 
         $sudahMember = OrganizationMember::where('organization_id', $inv->organization_id)
             ->where('user_id', $user->id)
@@ -123,7 +126,10 @@ class MembershipService
     public function declineInvitation(OrganizationInvitation $inv, User $user): void
     {
         abort_unless($inv->accepted_at === null && $inv->declined_at === null, 422, 'Undangan sudah diproses.');
-        abort_unless(strtolower($inv->email) === strtolower($user->email), 403, 'Undangan ini bukan untuk akun Anda.');
+
+        /** @phpstan-impure */
+        $emailCocok = fn (): bool => strtolower((string) $inv->email) === strtolower((string) $user->email);
+        abort_unless($emailCocok(), 403, 'Undangan ini bukan untuk akun Anda.');
 
         $inv->forceFill(['declined_at' => now()])->save();
 

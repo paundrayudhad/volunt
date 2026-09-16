@@ -18,14 +18,12 @@ class OrganizationInvitation extends Model
         'expires_at',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'expires_at' => 'datetime',
-            'accepted_at' => 'datetime',
-            'declined_at' => 'datetime',
-        ];
-    }
+    /** @var array<string, string> */
+    protected $casts = [
+        'expires_at' => 'datetime',
+        'accepted_at' => 'datetime',
+        'declined_at' => 'datetime',
+    ];
 
     /** @return BelongsTo<Organization, $this> */
     public function organization(): BelongsTo

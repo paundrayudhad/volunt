@@ -114,4 +114,17 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Super Admin Seed
+    |--------------------------------------------------------------------------
+    |
+    | Email default untuk perintah app:seed-super-admin. Diubah via variabel
+    | environment SUPER_ADMIN_EMAIL agar tidak ada pemanggilan env() di luar
+    | direktori config.
+    |
+    */
+
+    'super_admin_email' => env('SUPER_ADMIN_EMAIL', 'admin@webvolunteer.local'),
+
 ];

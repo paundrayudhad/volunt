@@ -15,7 +15,7 @@ class SeedSuperAdmin extends Command
 
     public function handle(AuditLogService $audit): int
     {
-        $email = $this->option('email') ?: (string) env('SUPER_ADMIN_EMAIL', 'admin@webvolunteer.local');
+        $email = $this->option('email') ?: (string) config('auth.super_admin_email', 'admin@webvolunteer.local');
         $name = (string) $this->option('name');
 
         $user = User::where('email', $email)->first();
