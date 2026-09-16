@@ -10,6 +10,8 @@ class OrganizationInvitation extends Model
 {
     use HasFactory;
 
+    public ?string $plain_token = null;
+
     protected $fillable = [
         'email',
         'role',
