@@ -11,6 +11,7 @@ use App\Services\MembershipService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class MemberController extends Controller
 {
@@ -40,7 +41,7 @@ class MemberController extends Controller
 
         try {
             $this->members->invite($organization, $valid, $request->user());
-        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+        } catch (HttpException $e) {
             return back()->withInput()->withErrors(['email' => $e->getMessage()]);
         }
 

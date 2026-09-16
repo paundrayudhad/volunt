@@ -24,7 +24,7 @@
                         <a href="{{ route('organizer.members.index', $org->slug) }}" class="underline">Kelola anggota</a>
                     </div>
 
-                    @can('update', $org)
+                    @can('transfer', $org)
                         <form method="POST" action="{{ route('organizer.transfer', $org->slug) }}" class="mt-6 max-w-md">
                             @csrf
                             <label for="member_id" class="block text-sm font-medium">Alihkan kepemilikan ke anggota (ID anggota)</label>
