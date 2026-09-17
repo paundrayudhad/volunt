@@ -38,6 +38,7 @@ class PublicEventController extends Controller
         $eventPublic->load([
             'organization',
             'divisions.roles',
+            'roles.division',
             'roles' => fn ($query) => $query->orderBy('name'),
             'shifts' => fn ($query) => $query->orderBy('start_at'),
         ]);
