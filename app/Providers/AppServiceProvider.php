@@ -98,6 +98,10 @@ class AppServiceProvider extends ServiceProvider
                 ->firstOrFail();
         });
 
+        Route::bind('eventPublic', fn (string $value): EventModel => EventModel::published()
+            ->where('slug', $value)
+            ->firstOrFail());
+
         Route::bind('division', function (string $value): EventDivision {
             $event = request()->route()?->parameter('event');
             $eventId = $event instanceof EventModel ? $event->getKey() : null;

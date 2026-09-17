@@ -11,9 +11,17 @@ use App\Http\Controllers\Organizer\MemberController;
 use App\Http\Controllers\Organizer\OrganizationController;
 use App\Http\Controllers\Organizer\RoleController;
 use App\Http\Controllers\Organizer\ShiftController;
+use App\Http\Controllers\PublicEventController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome');
+
+Route::get('events', [PublicEventController::class, 'index'])
+    ->middleware('throttle:60,1')
+    ->name('events.index');
+Route::get('events/{eventPublic}', [PublicEventController::class, 'show'])
+    ->middleware('throttle:60,1')
+    ->name('events.show');
 
 Route::view('dashboard', 'dashboard')
     ->middleware(['auth', 'verified'])
