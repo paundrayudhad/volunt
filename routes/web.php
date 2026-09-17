@@ -4,9 +4,13 @@ use App\Http\Controllers\Admin\LogController as AdminLogController;
 use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationController;
 use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizationRequestController;
 use App\Http\Controllers\OrganizationRequestController;
+use App\Http\Controllers\Organizer\DivisionController;
+use App\Http\Controllers\Organizer\EventController;
 use App\Http\Controllers\Organizer\InvitationController;
 use App\Http\Controllers\Organizer\MemberController;
 use App\Http\Controllers\Organizer\OrganizationController;
+use App\Http\Controllers\Organizer\RoleController;
+use App\Http\Controllers\Organizer\ShiftController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome');
@@ -48,6 +52,57 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('members', [MemberController::class, 'store'])->name('members.store');
         Route::patch('members/{member}', [MemberController::class, 'update'])->name('members.update');
         Route::delete('members/{member}', [MemberController::class, 'destroy'])->name('members.destroy');
+
+        Route::prefix('events')->name('events.')->group(function () {
+            Route::get('/', [EventController::class, 'index'])->name('index');
+            Route::get('create', [EventController::class, 'create'])->name('create');
+            Route::post('/', [EventController::class, 'store'])->name('store');
+            Route::prefix('{event}')->group(function () {
+                Route::get('/', [EventController::class, 'show'])->name('show');
+                Route::get('edit', [EventController::class, 'edit'])->name('edit');
+                Route::patch('/', [EventController::class, 'update'])->name('update');
+                Route::delete('/', [EventController::class, 'destroy'])->name('destroy');
+                Route::post('transition', [EventController::class, 'transition'])
+                    ->middleware('password.confirm')
+                    ->name('transition');
+
+                Route::prefix('divisions')->name('divisions.')->group(function () {
+                    Route::get('/', [DivisionController::class, 'index'])->name('index');
+                    Route::get('create', [DivisionController::class, 'create'])->name('create');
+                    Route::post('/', [DivisionController::class, 'store'])->name('store');
+                    Route::prefix('{division}')->group(function () {
+                        Route::get('/', [DivisionController::class, 'show'])->name('show');
+                        Route::get('edit', [DivisionController::class, 'edit'])->name('edit');
+                        Route::patch('/', [DivisionController::class, 'update'])->name('update');
+                        Route::delete('/', [DivisionController::class, 'destroy'])->name('destroy');
+                    });
+                });
+
+                Route::prefix('roles')->name('roles.')->group(function () {
+                    Route::get('/', [RoleController::class, 'index'])->name('index');
+                    Route::get('create', [RoleController::class, 'create'])->name('create');
+                    Route::post('/', [RoleController::class, 'store'])->name('store');
+                    Route::prefix('{role}')->group(function () {
+                        Route::get('/', [RoleController::class, 'show'])->name('show');
+                        Route::get('edit', [RoleController::class, 'edit'])->name('edit');
+                        Route::patch('/', [RoleController::class, 'update'])->name('update');
+                        Route::delete('/', [RoleController::class, 'destroy'])->name('destroy');
+                    });
+                });
+
+                Route::prefix('shifts')->name('shifts.')->group(function () {
+                    Route::get('/', [ShiftController::class, 'index'])->name('index');
+                    Route::get('create', [ShiftController::class, 'create'])->name('create');
+                    Route::post('/', [ShiftController::class, 'store'])->name('store');
+                    Route::prefix('{shift}')->group(function () {
+                        Route::get('/', [ShiftController::class, 'show'])->name('show');
+                        Route::get('edit', [ShiftController::class, 'edit'])->name('edit');
+                        Route::patch('/', [ShiftController::class, 'update'])->name('update');
+                        Route::delete('/', [ShiftController::class, 'destroy'])->name('destroy');
+                    });
+                });
+            });
+        });
     });
 });
 
