@@ -2,7 +2,6 @@
 
 namespace Database\Factories;
 
-use App\Models\Event;
 use App\Models\EventDivision;
 use App\Models\EventRole;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -16,9 +15,11 @@ class EventRoleFactory extends Factory
 
     public function definition(): array
     {
+        $division = EventDivision::factory()->create();
+
         return [
-            'event_id' => Event::factory(),
-            'division_id' => EventDivision::factory(),
+            'event_id' => $division->event_id,
+            'division_id' => $division->id,
             'name' => fake()->unique()->word(),
             'quota' => 5,
             'accepted_count' => 0,

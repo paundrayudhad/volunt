@@ -2,8 +2,6 @@
 
 namespace Database\Factories;
 
-use App\Models\Event;
-use App\Models\EventDivision;
 use App\Models\EventRole;
 use App\Models\EventShift;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -17,12 +15,13 @@ class EventShiftFactory extends Factory
 
     public function definition(): array
     {
+        $role = EventRole::factory()->create();
         $start = fake()->dateTimeBetween('+1 week', '+2 months');
 
         return [
-            'event_id' => Event::factory(),
-            'division_id' => EventDivision::factory(),
-            'role_id' => EventRole::factory(),
+            'event_id' => $role->event_id,
+            'division_id' => $role->division_id,
+            'role_id' => $role->id,
             'start_at' => $start,
             'end_at' => (clone $start)->modify('+4 hours'),
             'status' => 'active',
