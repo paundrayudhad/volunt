@@ -32,7 +32,7 @@ Tanpa React/Vue SPA. Server-rendered agar hemat resource VPS.
 
 ## Status
 
-**Phase 1 — Selesai.** Auth + organization + membership + RBAC + isolation + suite hijau. Lanjut Phase 2 (Event).
+**Phase 2 — Selesai.** Event + division + role + shift + state machine + katalog publik + suite hijau. Lanjut Phase 3 (Volunteer).
 Lihat [PRD.md](PRD.md) dan peta dokumen di bawah.
 
 ## Quickstart Dev (rencana, setelah scaffold Phase 0)
