@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Event;
+use App\Models\Organization;
 use App\Services\EventService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -42,6 +43,7 @@ class EventController extends Controller
             'statusDipilih' => in_array($status, self::STATUS, true) ? $status : '',
             'orgDipilih' => is_numeric($orgId) ? (int) $orgId : '',
             'daftarStatus' => self::STATUS,
+            'daftarOrg' => Organization::orderBy('name')->get(['id', 'name']),
         ]);
     }
 

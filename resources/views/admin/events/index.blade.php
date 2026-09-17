@@ -25,6 +25,13 @@
                                 <option value="{{ $status }}" @selected($statusDipilih === $status)>{{ $status }}</option>
                             @endforeach
                         </select>
+                        <label for="org" class="text-sm">Organisasi</label>
+                        <select id="org" name="org" class="rounded border-gray-300 dark:bg-gray-700 text-sm">
+                            <option value="">Semua organisasi</option>
+                            @foreach ($daftarOrg as $orgFilter)
+                                <option value="{{ $orgFilter->id }}" @selected($orgDipilih === $orgFilter->id)>{{ $orgFilter->name }}</option>
+                            @endforeach
+                        </select>
                         <x-primary-button>Filter</x-primary-button>
                     </form>
 
@@ -39,11 +46,15 @@
                                         @csrf
                                         <label for="cancel-{{ $event->id }}" class="text-sm">Alasan pembatalan</label>
                                         <input id="cancel-{{ $event->id }}" name="reason" type="text" required
+                                            value="{{ old('reason') }}"
                                             class="rounded border-gray-300 dark:bg-gray-700 text-sm"
                                             placeholder="Tulis alasan" />
                                         <x-danger-button>Batalkan paksa</x-danger-button>
                                     </form>
                                 </div>
+                                @error('reason')
+                                    <p class="mt-2 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                                @enderror
                             </li>
                         @empty
                             <li>Belum ada event.</li>

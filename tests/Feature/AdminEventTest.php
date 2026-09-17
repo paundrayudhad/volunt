@@ -73,12 +73,14 @@ it('super_admin melihat daftar semua event lintas organisasi', function (): void
         ->assertSee($orgB->name);
 });
 
-it('daftar admin mendukung filter status dan paginasi 20 per halaman', function (): void {
+it('daftar admin mendukung filter status organisasi dan paginasi 20 per halaman', function (): void {
     $admin = adminEventSuperAdmin();
     [$owner, $org] = adminEventOwner();
+    [$ownerLain, $orgLain] = adminEventOwner();
     for ($i = 1; $i <= 21; $i++) {
         adminEventBuat($owner, $org, "Event {$i}", "event-{$i}");
     }
+    adminEventBuat($ownerLain, $orgLain, 'Event Tetangga', 'event-tetangga');
     $terbit = Event::where('slug', 'event-21')->firstOrFail();
     app(EventService::class)->transitionTo($terbit, 'published', $owner);
 
@@ -86,6 +88,11 @@ it('daftar admin mendukung filter status dan paginasi 20 per halaman', function 
         ->assertOk()
         ->assertSee('Event 21')
         ->assertDontSee('Event 20');
+
+    $this->actingAs($admin)->get(route('admin.events.index', ['org' => $orgLain->id]))
+        ->assertOk()
+        ->assertSee('Event Tetangga')
+        ->assertDontSee('Event 21');
 
     $this->actingAs($admin)->get(route('admin.events.index', ['page' => 2]))
         ->assertOk()
@@ -132,6 +139,21 @@ it('cancel paksa tanpa konfirmasi password dialihkan ke halaman konfirmasi', fun
         ->assertRedirectToRoute('password.confirm');
 
     expect($event->fresh()->status)->toBe('draft');
+});
+
+it('cancel paksa pada event terminal kembali dengan error dan status tak berubah', function (): void {
+    $admin = adminEventSuperAdmin();
+    [$owner, $org] = adminEventOwner();
+    $event = adminEventBuat($owner, $org, 'Festival Terminal', 'festival-terminal');
+    app(EventService::class)->transitionTo($event, 'cancelled', $owner, 'Sudah batal.');
+
+    $this->actingAs($admin)->from(route('admin.events.index'))->withSession(adminEventKonfirmasi())
+        ->followingRedirects()
+        ->post(route('admin.events.cancel', $event->id), ['reason' => 'Coba batal lagi.'])
+        ->assertOk()
+        ->assertSee('Transisi status tidak valid.');
+
+    expect($event->fresh()->status)->toBe('cancelled');
 });
 
 it('non-admin tidak bisa mengakses panel event admin', function (): void {
