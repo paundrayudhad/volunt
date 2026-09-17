@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Admin\LogController as AdminLogController;
 use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationController;
 use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizationRequestController;
@@ -131,6 +132,11 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
         ->name('organizations.archive');
     Route::post('organizations/{org}/activate', [AdminOrganizationController::class, 'activate'])
         ->name('organizations.activate');
+
+    Route::get('events', [AdminEventController::class, 'index'])->name('events.index');
+    Route::post('events/{eventAdmin}/cancel', [AdminEventController::class, 'cancel'])
+        ->middleware('password.confirm')
+        ->name('events.cancel');
 
     Route::get('logs', [AdminLogController::class, 'index'])->name('logs.index');
 });
