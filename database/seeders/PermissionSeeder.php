@@ -22,6 +22,14 @@ class PermissionSeeder extends Seeder
         'organization.archive',
         'audit.read',
         'security.read',
+        'event.create',
+        'event.view',
+        'event.update',
+        'event.delete',
+        'event.publish',
+        'division.manage',
+        'role.manage',
+        'shift.manage',
     ];
 
     public function run(): void

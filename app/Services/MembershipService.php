@@ -25,11 +25,19 @@ class MembershipService
         'organization.archive',
         'audit.read',
         'security.read',
+        'event.create',
+        'event.view',
+        'event.update',
+        'event.delete',
+        'event.publish',
+        'division.manage',
+        'role.manage',
+        'shift.manage',
     ];
 
     public const OWNER_PERMS = self::GRANULAR;
 
-    public const STAFF_BASE = ['organization.view', 'member.view'];
+    public const STAFF_BASE = ['organization.view', 'member.view', 'event.view'];
 
     public function __construct(private AuditLogService $audit) {}
 
