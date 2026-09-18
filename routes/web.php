@@ -148,7 +148,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 Route::prefix('registrations')->name('registrations.')->group(function () {
                     Route::get('/', [OrganizerRegistrationController::class, 'index'])->name('index');
                     Route::post('bulk', [OrganizerRegistrationController::class, 'bulkReview'])
-                        ->middleware('password.confirm')
+                        ->middleware(['password.confirm', 'throttle:10,1'])
                         ->name('bulk');
                     Route::prefix('{registration}')->group(function () {
                         Route::get('/', [OrganizerRegistrationController::class, 'show'])->name('show');

@@ -2,12 +2,16 @@
 
 use App\Models\Event;
 use App\Models\EventCustomField;
+use App\Models\EventCustomFieldOption;
 use App\Models\EventDivision;
 use App\Models\EventRole;
 use App\Models\Organization;
 use App\Models\Registration;
+use App\Models\SecurityLog;
 use App\Models\User;
 use App\Models\VolunteerProfile;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /** @return array{org: Organization, volunteer: User, event: Event, role: EventRole, field: EventCustomField} */
@@ -160,4 +164,125 @@ it('event yang belum membuka registrasi ditolak 422', function (): void {
         ->assertUnprocessable();
 
     expect(Registration::count())->toBe(0);
+});
+
+function daftarTesPdf(string $name = 'dokumen.pdf', int $kilobytes = 100): UploadedFile
+{
+    $tmp = tempnam(sys_get_temp_dir(), 'pdf');
+    $header = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n";
+    $padding = str_repeat('0', max(0, $kilobytes * 1024 - strlen($header)));
+    file_put_contents($tmp, $header.$padding);
+
+    return new UploadedFile($tmp, $name, 'application/pdf', null, true);
+}
+
+it('upload file valid diterima dan tersimpan', function (): void {
+    Storage::fake();
+    $setup = daftarTesPaket();
+    $setup['field']->update(['type' => 'file']);
+    $file = daftarTesPdf();
+
+    $this->actingAs($setup['volunteer'])
+        ->post(route('registrations.store', $setup['event']->slug), daftarTesPayload($setup, [
+            'answers' => [$setup['field']->id => $file],
+        ]))
+        ->assertRedirect();
+
+    $reg = Registration::firstOrFail();
+    $answer = $reg->answers()->firstOrFail();
+    expect($answer->file_path)->not->toBeNull();
+    Storage::assertExists($answer->file_path);
+});
+
+it('file dengan mime palsu ditolak dan dicatat security log', function (): void {
+    Storage::fake();
+    $setup = daftarTesPaket();
+    $setup['field']->update(['type' => 'file']);
+    $tmp = tempnam(sys_get_temp_dir(), 'txt');
+    file_put_contents($tmp, 'bukan pdf asli');
+    $palsu = new UploadedFile($tmp, 'dokumen.pdf', 'application/pdf', null, true);
+
+    $this->actingAs($setup['volunteer'])
+        ->postJson(route('registrations.store', $setup['event']->slug), daftarTesPayload($setup, [
+            'answers' => [$setup['field']->id => $palsu],
+        ]))
+        ->assertUnprocessable();
+
+    expect(Registration::count())->toBe(0)
+        ->and(SecurityLog::where('type', 'file_upload_rejected')->count())->toBe(1);
+});
+
+it('file melebihi batas ukuran ditolak 422', function (): void {
+    Storage::fake();
+    $setup = daftarTesPaket();
+    $setup['field']->update(['type' => 'file']);
+    $besar = daftarTesPdf('besar.pdf', 6000);
+
+    $this->actingAs($setup['volunteer'])
+        ->postJson(route('registrations.store', $setup['event']->slug), daftarTesPayload($setup, [
+            'answers' => [$setup['field']->id => $besar],
+        ]))
+        ->assertUnprocessable();
+
+    expect(Registration::count())->toBe(0);
+});
+
+it('jawaban select dengan opsi asing ditolak 422', function (): void {
+    $setup = daftarTesPaket();
+    $setup['field']->update(['type' => 'select']);
+    EventCustomFieldOption::unguarded(fn () => $setup['field']->options()->create([
+        'label' => 'Kecil',
+        'value' => 'S',
+    ]));
+
+    $this->actingAs($setup['volunteer'])
+        ->postJson(route('registrations.store', $setup['event']->slug), daftarTesPayload($setup, [
+            'answers' => [$setup['field']->id => 'XXL'],
+        ]))
+        ->assertUnprocessable();
+
+    expect(Registration::count())->toBe(0);
+});
+
+it('submit dengan role nonaktif ditolak 422', function (): void {
+    $setup = daftarTesPaket();
+    $setup['role']->forceFill(['status' => 'inactive'])->save();
+
+    $this->actingAs($setup['volunteer'])
+        ->postJson(route('registrations.store', $setup['event']->slug), daftarTesPayload($setup))
+        ->assertUnprocessable();
+
+    expect(Registration::count())->toBe(0);
+});
+
+it('histori submit mencatat created_at', function (): void {
+    $setup = daftarTesPaket();
+
+    $this->actingAs($setup['volunteer'])
+        ->post(route('registrations.store', $setup['event']->slug), daftarTesPayload($setup))
+        ->assertRedirect();
+
+    $reg = Registration::firstOrFail();
+    expect($reg->histories()->first()?->created_at)->not->toBeNull();
+});
+
+it('tombol tarik disembunyikan untuk pendaftaran accepted', function (): void {
+    $setup = daftarTesPaket();
+    $this->actingAs($setup['volunteer'])
+        ->post(route('registrations.store', $setup['event']->slug), daftarTesPayload($setup))
+        ->assertRedirect();
+    $reg = Registration::firstOrFail();
+    $reg->forceFill(['status' => 'accepted'])->save();
+
+    $this->actingAs($setup['volunteer'])
+        ->get(route('registrations.show', $reg->id))
+        ->assertOk()
+        ->assertDontSee('Tarik pendaftaran');
+
+    $reg->forceFill(['status' => 'under_review'])->save();
+
+    $this->actingAs($setup['volunteer'])
+        ->get(route('registrations.show', $reg->id))
+        ->assertOk()
+        ->assertSee('Tarik pendaftaran');
 });

@@ -46,6 +46,7 @@ class RegistrationService
             }
             RegistrationStatusHistory::unguarded(fn (): mixed => $reg->histories()->create([
                 'from_status' => null, 'to_status' => 'pending', 'changed_by' => $user->id, 'reason' => null,
+                'created_at' => now(),
             ]));
             $this->audit->record($user, 'registration.submitted', Registration::class, $reg->id, ['organization_id' => $event->organization_id, 'event_id' => $event->id]);
 
@@ -98,7 +99,9 @@ class RegistrationService
             abort_unless(trim((string) $reason) !== '', 422, 'Alasan penolakan wajib diisi.');
         }
         $dari = $reg->status;
+        $event = $reg->event()->firstOrFail();
         if ($to === 'accepted') {
+            abort_if($event->isTerminal(), 422, 'Event sudah berakhir atau dibatalkan.');
             $this->quota->accept($reg->role()->firstOrFail());
         }
         if ($to === 'cancelled' && $dari === 'accepted') {
@@ -112,8 +115,8 @@ class RegistrationService
         ])->save();
         RegistrationStatusHistory::unguarded(fn (): mixed => $reg->histories()->create([
             'from_status' => $dari, 'to_status' => $to, 'changed_by' => $actor->id, 'reason' => $reason,
+            'created_at' => now(),
         ]));
-        $event = $reg->event()->firstOrFail();
         $this->audit->record($actor, "registration.{$to}", Registration::class, $reg->id, [
             'organization_id' => $event->organization_id,
             'event_id' => $event->id,

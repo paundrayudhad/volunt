@@ -45,13 +45,6 @@
                         </div>
                     </div>
 
-                    <div>
-                        <x-input-label for="validation_rule" value="Aturan validasi tambahan (opsional)" />
-                        <x-text-input id="validation_rule" name="validation_rule" type="text" class="mt-1 block w-full"
-                            :value="old('validation_rule', $field->validation_rule)" />
-                        <x-input-error :messages="$errors->get('validation_rule')" class="mt-2" />
-                    </div>
-
                     <div class="flex items-center gap-4">
                         <label class="flex items-center gap-2 text-sm">
                             <input type="checkbox" name="required" value="1" @checked(old('required', $field->required)) />

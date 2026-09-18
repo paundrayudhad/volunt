@@ -35,7 +35,7 @@
 
                     <div class="mt-4 flex items-center gap-4">
                         <a href="{{ route('registrations.index') }}" class="underline text-sm">Kembali ke daftar</a>
-                        @if (! $registration->isTerminal())
+                        @if (! $registration->isTerminal() && $registration->status !== 'accepted')
                             <form method="POST" action="{{ route('registrations.withdraw', $registration->id) }}">
                                 @csrf
                                 <x-primary-button>Tarik pendaftaran</x-primary-button>

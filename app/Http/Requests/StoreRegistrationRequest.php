@@ -25,7 +25,7 @@ class StoreRegistrationRequest extends FormRequest
         $fields = $event->customFields()->with('options')->where('is_active', true)->orderBy('sort_order')->get();
 
         $rules = [
-            'role_id' => ['required', 'integer', Rule::exists('event_roles', 'id')->where('event_id', $event->id)],
+            'role_id' => ['required', 'integer', Rule::exists('event_roles', 'id')->where('event_id', $event->id)->where('status', 'active')],
             'idempotency_key' => ['required', 'uuid'],
             'answers' => ['nullable', 'array'],
         ];

@@ -248,6 +248,53 @@ it('staff read-only tidak boleh bulk walau boleh melihat daftar', function (): v
     expect($reg->refresh()->status)->toBe('under_review');
 });
 
+it('accept pada event cancelled ditolak 422 dan status utuh', function (): void {
+    $setup = seleksiTesSetup();
+    $reg = seleksiTesDaftar($setup);
+    $setup['event']->forceFill(['status' => 'cancelled'])->save();
+
+    $this->actingAs($setup['owner'])->withSession(seleksiTesKonfirmasi())
+        ->from(route('organizer.events.registrations.show', [$setup['org']->slug, $setup['event']->slug, $reg->id]))
+        ->post(route('organizer.events.registrations.review', [$setup['org']->slug, $setup['event']->slug, $reg->id]), [
+            'action' => 'accepted',
+        ])
+        ->assertRedirect()
+        ->assertSessionHasErrors('action');
+
+    expect($reg->refresh()->status)->toBe('under_review')
+        ->and($setup['role']->refresh()->accepted_count)->toBe(0);
+});
+
+it('accept pada event archived ditolak 422 dan status utuh', function (): void {
+    $setup = seleksiTesSetup();
+    $reg = seleksiTesDaftar($setup);
+    $setup['event']->forceFill(['status' => 'archived'])->save();
+
+    $this->actingAs($setup['owner'])->withSession(seleksiTesKonfirmasi())
+        ->from(route('organizer.events.registrations.show', [$setup['org']->slug, $setup['event']->slug, $reg->id]))
+        ->post(route('organizer.events.registrations.review', [$setup['org']->slug, $setup['event']->slug, $reg->id]), [
+            'action' => 'accepted',
+        ])
+        ->assertRedirect()
+        ->assertSessionHasErrors('action');
+
+    expect($reg->refresh()->status)->toBe('under_review')
+        ->and($setup['role']->refresh()->accepted_count)->toBe(0);
+});
+
+it('histori review mencatat created_at', function (): void {
+    $setup = seleksiTesSetup();
+    $reg = seleksiTesDaftar($setup);
+
+    $this->actingAs($setup['owner'])->withSession(seleksiTesKonfirmasi())
+        ->post(route('organizer.events.registrations.review', [$setup['org']->slug, $setup['event']->slug, $reg->id]), [
+            'action' => 'waitlisted',
+        ])
+        ->assertRedirect();
+
+    expect($reg->refresh()->histories()->where('to_status', 'waitlisted')->first()?->created_at)->not->toBeNull();
+});
+
 it('staff tanpa permission registration.review mendapat 403', function (): void {
     $setup = seleksiTesSetup();
     $staf = User::factory()->create();
