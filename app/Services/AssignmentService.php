@@ -156,6 +156,7 @@ class AssignmentService
         abort_unless($registration->status === 'accepted', 422, 'Hanya pendaftaran yang diterima yang bisa ditugaskan.');
         abort_unless((int) $shift->event_id === (int) $registration->event_id, 422, 'Shift tidak termasuk event yang sama dengan pendaftaran.');
         $duplikat = Assignment::where('registration_id', $registration->id)
+            ->whereIn('status', Assignment::ACTIVE)
             ->when($kecualiAssignmentId !== null, fn ($q) => $q->where('id', '!=', $kecualiAssignmentId))
             ->exists();
         abort_if($duplikat, 422, 'Pendaftaran ini sudah memiliki assignment.');
@@ -190,7 +191,7 @@ class AssignmentService
     private function pastikanTidakBentrok(int $userId, EventShift $shift, ?int $kecualiAssignmentId = null): void
     {
         $bentrok = Assignment::where('user_id', $userId)
-            ->whereIn('status', ['assigned', 'reassigned', 'confirmed'])
+            ->whereIn('status', Assignment::ACTIVE)
             ->when($kecualiAssignmentId !== null, fn ($q) => $q->where('id', '!=', $kecualiAssignmentId))
             ->whereHas('shift', fn ($q) => $q
                 ->where('start_at', '<', $shift->end_at)

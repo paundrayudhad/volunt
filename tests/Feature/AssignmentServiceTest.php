@@ -220,6 +220,39 @@ it('cancel melepas kuota shift', function (): void {
         ->and($shift->refresh()->filled_count)->toBe(0);
 });
 
+it('batal lalu tugaskan ulang registration yang sama berhasil', function (): void {
+    $s = assignTesSetup();
+    $svc = app(AssignmentService::class);
+    $shift = assignTesShift($s, 10, 12);
+    $reg = assignTesRegistrasiDiterima($s);
+    $lama = $svc->assign($reg, $shift, $s['owner']);
+    $svc->cancel($lama, $s['owner'], 'Volunteer berhalangan hadir.');
+    expect($shift->refresh()->filled_count)->toBe(0);
+
+    $baru = $svc->assign($reg, $shift, $s['owner']);
+
+    expect($baru->id)->not->toBe($lama->id)
+        ->and($baru->status)->toBe('assigned')
+        ->and($baru->registration_id)->toBe($reg->id)
+        ->and($shift->refresh()->filled_count)->toBe(1);
+});
+
+it('riwayat assignment yang dibatalkan tetap tersimpan setelah tugaskan ulang', function (): void {
+    $s = assignTesSetup();
+    $svc = app(AssignmentService::class);
+    $shift = assignTesShift($s, 10, 12);
+    $reg = assignTesRegistrasiDiterima($s);
+    $lama = $svc->assign($reg, $shift, $s['owner']);
+    $svc->cancel($lama, $s['owner'], 'Volunteer berhalangan hadir.');
+
+    $svc->assign($reg, $shift, $s['owner']);
+
+    $lama = $lama->refresh();
+    expect($lama->status)->toBe('cancelled')
+        ->and($lama->histories()->where('to_status', 'cancelled')->count())->toBe(1)
+        ->and(Assignment::where('registration_id', $reg->id)->count())->toBe(2);
+});
+
 it('bulkAssign memproses tiga registration sekaligus', function (): void {
     $s = assignTesSetup();
     $shift = assignTesShift($s, 10, 12, 5);

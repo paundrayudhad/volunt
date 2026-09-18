@@ -14,6 +14,8 @@ class Assignment extends Model
     /** @use HasFactory<AssignmentFactory> */
     use HasFactory, SoftDeletes;
 
+    public const ACTIVE = ['assigned', 'reassigned', 'confirmed'];
+
     public const TRANSITIONS = [
         'assigned' => ['confirmed', 'completed', 'cancelled'],
         'confirmed' => ['completed', 'cancelled'],
@@ -98,6 +100,6 @@ class Assignment extends Model
 
     public function isActive(): bool
     {
-        return in_array($this->status, ['assigned', 'reassigned', 'confirmed'], true);
+        return in_array($this->status, self::ACTIVE, true);
     }
 }
