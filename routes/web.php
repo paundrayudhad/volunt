@@ -5,6 +5,8 @@ use App\Http\Controllers\Admin\LogController as AdminLogController;
 use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationController;
 use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizationRequestController;
 use App\Http\Controllers\OrganizationRequestController;
+use App\Http\Controllers\VolunteerProfileController;
+use App\Http\Controllers\VolunteerRegistrationController;
 use App\Http\Controllers\Organizer\DivisionController;
 use App\Http\Controllers\Organizer\CustomFieldController;
 use App\Http\Controllers\Organizer\EventController;
@@ -48,6 +50,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('invitations.accept');
     Route::post('invitations/{invitation}/decline', [InvitationController::class, 'decline'])
         ->name('invitations.decline');
+
+    Route::get('registrations', [VolunteerRegistrationController::class, 'index'])
+        ->name('registrations.index');
+    Route::get('registrations/{registrationVol}', [VolunteerRegistrationController::class, 'show'])
+        ->name('registrations.show');
+    Route::get('events/{eventPublic}/register', [VolunteerRegistrationController::class, 'create'])
+        ->name('registrations.create');
+    Route::post('events/{eventPublic}/register', [VolunteerRegistrationController::class, 'store'])
+        ->middleware('throttle:10,1')
+        ->name('registrations.store');
+    Route::post('registrations/{registrationVol}/withdraw', [VolunteerRegistrationController::class, 'withdraw'])
+        ->name('registrations.withdraw');
+
+    Route::get('profile/volunteer', [VolunteerProfileController::class, 'edit'])
+        ->name('profile.volunteer.edit');
+    Route::patch('profile/volunteer', [VolunteerProfileController::class, 'update'])
+        ->name('profile.volunteer.update');
 
     Route::prefix('organizer/{organization}')->name('organizer.')->group(function () {
         Route::get('/', [OrganizationController::class, 'show'])->name('show');

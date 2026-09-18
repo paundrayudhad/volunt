@@ -22,8 +22,15 @@
                         <p class="mt-1 text-sm">Kategori: {{ $event->category }}</p>
                     @endif
 
-                    <div class="mt-4">
+                    <div class="mt-4 flex items-center gap-4">
                         <a href="{{ route('events.index') }}" class="underline text-sm">Kembali ke katalog</a>
+                        @if ($event->status === 'registration_open')
+                            @auth
+                                <a href="{{ route('registrations.create', $event->slug) }}" class="underline text-sm font-medium">Daftar sebagai relawan</a>
+                            @else
+                                <a href="{{ route('login') }}" class="underline text-sm font-medium">Masuk untuk mendaftar</a>
+                            @endauth
+                        @endif
                     </div>
                 </div>
             </div>

@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\OrganizationInvitation;
 use App\Models\OrganizationMember;
 use App\Models\OrganizationRequest;
+use App\Models\Registration;
 use App\Models\User;
 use App\Policies\DivisionPolicy;
 use App\Policies\CustomFieldPolicy;
@@ -103,6 +104,10 @@ class AppServiceProvider extends ServiceProvider
 
         Route::bind('eventPublic', fn (string $value): EventModel => EventModel::published()
             ->where('slug', $value)
+            ->firstOrFail());
+
+        Route::bind('registrationVol', fn (string $value): Registration => Registration::whereKey($value)
+            ->where('user_id', auth()->id())
             ->firstOrFail());
 
         Route::bind('division', function (string $value): EventDivision {
