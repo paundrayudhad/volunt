@@ -15,8 +15,8 @@
             @if ($errors->any())
                 <div class="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100 p-4 rounded">
                     <ul class="list-disc list-inside text-sm">
-                        @foreach ($errors->all() as $pesan)
-                            <li>{{ $pesan }}</li>
+                        @foreach ($errors->all() as $message)
+                            <li>{{ $message }}</li>
                         @endforeach
                     </ul>
                 </div>
@@ -30,25 +30,25 @@
                         <label for="status" class="text-sm">Status</label>
                         <select id="status" name="status" class="rounded border-gray-300 dark:bg-gray-700 text-sm">
                             <option value="">Semua status</option>
-                            @foreach ($daftarStatus as $status)
-                                <option value="{{ $status }}" @selected($statusDipilih === $status)>{{ $status }}</option>
+                            @foreach ($statusOptions as $status)
+                                <option value="{{ $status }}" @selected($selectedStatus === $status)>{{ $status }}</option>
                             @endforeach
                         </select>
                         <x-primary-button>Filter</x-primary-button>
                     </form>
 
-                    @if ($pendaftaran->isEmpty())
+                    @if ($registrations->isEmpty())
                         <p class="mt-4 text-sm">Belum ada pendaftaran pada event ini.</p>
                     @else
                         <form method="POST" action="{{ route('organizer.events.registrations.bulk', [$org->slug, $event->slug]) }}" class="mt-4 space-y-3">
                             @csrf
                             <ul class="divide-y divide-gray-200 dark:divide-gray-700">
-                                @foreach ($pendaftaran as $satu)
+                                @foreach ($registrations as $item)
                                     <li class="py-3 flex items-start gap-3">
-                                        <input type="checkbox" name="ids[]" value="{{ $satu->id }}" class="mt-1" />
+                                        <input type="checkbox" name="ids[]" value="{{ $item->id }}" class="mt-1" />
                                         <div>
-                                            <a href="{{ route('organizer.events.registrations.show', [$org->slug, $event->slug, $satu->id]) }}" class="underline font-medium">{{ $satu->user?->name ?? 'Pendaftar' }}</a>
-                                            <p class="text-sm text-gray-500">Peran: {{ $satu->role?->name ?? '-' }} — Status: {{ $satu->status }}</p>
+                                            <a href="{{ route('organizer.events.registrations.show', [$org->slug, $event->slug, $item->id]) }}" class="underline font-medium">{{ $item->user?->name ?? 'Pendaftar' }}</a>
+                                            <p class="text-sm text-gray-500">Peran: {{ $item->role?->name ?? '-' }} — Status: {{ $item->status }}</p>
                                         </div>
                                     </li>
                                 @endforeach
@@ -69,7 +69,7 @@
                         </form>
 
                         <div class="mt-4">
-                            {{ $pendaftaran->links() }}
+                            {{ $registrations->links() }}
                         </div>
                     @endif
                 </div>

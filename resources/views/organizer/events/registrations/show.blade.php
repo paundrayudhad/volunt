@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
-            {{ __('Detail Pendaftar') }} — {{ $pendaftaran->user?->name ?? 'Pendaftar' }}
+            {{ __('Detail Pendaftar') }} — {{ $registration->user?->name ?? 'Pendaftar' }}
         </h2>
     </x-slot>
 
@@ -15,8 +15,8 @@
             @if ($errors->any())
                 <div class="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100 p-4 rounded">
                     <ul class="list-disc list-inside text-sm">
-                        @foreach ($errors->all() as $pesan)
-                            <li>{{ $pesan }}</li>
+                        @foreach ($errors->all() as $message)
+                            <li>{{ $message }}</li>
                         @endforeach
                     </ul>
                 </div>
@@ -25,16 +25,16 @@
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900 dark:text-gray-100">
                     <p class="text-sm">Event: <span class="font-medium">{{ $event->name }}</span></p>
-                    <p class="mt-1 text-sm">Peran: <span class="font-medium">{{ $pendaftaran->role?->name ?? '-' }}</span></p>
-                    <p class="mt-1 text-sm">Status: <span class="font-medium">{{ $pendaftaran->status }}</span></p>
-                    @if ($pendaftaran->rejection_reason)
-                        <p class="mt-1 text-sm">Alasan penolakan: {{ $pendaftaran->rejection_reason }}</p>
+                    <p class="mt-1 text-sm">Peran: <span class="font-medium">{{ $registration->role?->name ?? '-' }}</span></p>
+                    <p class="mt-1 text-sm">Status: <span class="font-medium">{{ $registration->status }}</span></p>
+                    @if ($registration->rejection_reason)
+                        <p class="mt-1 text-sm">Alasan penolakan: {{ $registration->rejection_reason }}</p>
                     @endif
 
-                    @if ($pendaftaran->answers->isNotEmpty())
+                    @if ($registration->answers->isNotEmpty())
                         <h3 class="mt-4 font-semibold">Jawaban</h3>
                         <ul class="mt-2 space-y-1 text-sm">
-                            @foreach ($pendaftaran->answers as $answer)
+                            @foreach ($registration->answers as $answer)
                                 <li>
                                     <span class="font-medium">{{ $answer->field?->label ?? 'Field' }}:</span>
                                     {{ $answer->value_text ?? (is_array($answer->value_jsonb) ? implode(', ', $answer->value_jsonb) : $answer->file_path) }}
@@ -43,16 +43,16 @@
                         </ul>
                     @endif
 
-                    @if ($pendaftaran->histories->isNotEmpty())
+                    @if ($registration->histories->isNotEmpty())
                         <h3 class="mt-4 font-semibold">Riwayat status</h3>
                         <ul class="mt-2 space-y-1 text-sm">
-                            @foreach ($pendaftaran->histories as $history)
+                            @foreach ($registration->histories as $history)
                                 <li>{{ $history->from_status ?? '-' }} → {{ $history->to_status }}</li>
                             @endforeach
                         </ul>
                     @endif
 
-                    <form method="POST" action="{{ route('organizer.events.registrations.review', [$org->slug, $event->slug, $pendaftaran->id]) }}" class="mt-6 space-y-3">
+                    <form method="POST" action="{{ route('organizer.events.registrations.review', [$org->slug, $event->slug, $registration->id]) }}" class="mt-6 space-y-3">
                         @csrf
                         <div class="flex flex-wrap items-center gap-2">
                             <label for="action" class="text-sm">Keputusan</label>

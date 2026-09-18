@@ -15,25 +15,25 @@
                         <label for="status" class="text-sm">Status</label>
                         <select id="status" name="status" class="rounded border-gray-300 dark:bg-gray-700 text-sm">
                             <option value="">Semua status</option>
-                            @foreach ($daftarStatus as $status)
-                                <option value="{{ $status }}" @selected($statusDipilih === $status)>{{ $status }}</option>
+                            @foreach ($statusOptions as $status)
+                                <option value="{{ $status }}" @selected($selectedStatus === $status)>{{ $status }}</option>
                             @endforeach
                         </select>
                         <label for="org" class="text-sm">Organisasi</label>
                         <select id="org" name="org" class="rounded border-gray-300 dark:bg-gray-700 text-sm">
                             <option value="">Semua organisasi</option>
-                            @foreach ($daftarOrg as $orgFilter)
-                                <option value="{{ $orgFilter->id }}" @selected($orgDipilih === $orgFilter->id)>{{ $orgFilter->name }}</option>
+                            @foreach ($orgOptions as $orgFilter)
+                                <option value="{{ $orgFilter->id }}" @selected($selectedOrg === $orgFilter->id)>{{ $orgFilter->name }}</option>
                             @endforeach
                         </select>
                         <x-primary-button>Filter</x-primary-button>
                     </form>
 
                     <ul class="mt-4 space-y-4">
-                        @forelse ($pendaftaran as $satu)
+                        @forelse ($registrations as $item)
                             <li class="border-b pb-4">
-                                <a href="{{ route('admin.registrations.show', $satu->id) }}" class="underline font-medium">{{ $satu->user?->name ?? 'Pendaftar' }}</a>
-                                <p class="text-sm">Event: {{ $satu->event?->name ?? '-' }} &middot; Organisasi: {{ $satu->event?->organization?->name ?? '-' }} &middot; Status: {{ $satu->status }}</p>
+                                <a href="{{ route('admin.registrations.show', $item->id) }}" class="underline font-medium">{{ $item->user?->name ?? 'Pendaftar' }}</a>
+                                <p class="text-sm">Event: {{ $item->event?->name ?? '-' }} &middot; Organisasi: {{ $item->event?->organization?->name ?? '-' }} &middot; Status: {{ $item->status }}</p>
                             </li>
                         @empty
                             <li>Belum ada pendaftaran.</li>
@@ -41,7 +41,7 @@
                     </ul>
 
                     <div class="mt-4">
-                        {{ $pendaftaran->links() }}
+                        {{ $registrations->links() }}
                     </div>
                 </div>
             </div>

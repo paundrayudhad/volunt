@@ -13,8 +13,18 @@ class BulkReviewRequest extends FormRequest
     {
         $event = $this->route('event');
 
-        return $event instanceof Event
-            && $this->user()->can('viewAny', [Registration::class, $event]);
+        if (! $event instanceof Event) {
+            return false;
+        }
+
+        $sample = Registration::where('event_id', $event->id)->first();
+
+        if ($sample instanceof Registration) {
+            return $this->user()->can('review', $sample);
+        }
+
+        return $this->user()->belongsToOrganization($event->organization_id)
+            && $this->user()->can('registration.review');
     }
 
     /** @return array<string, mixed> */

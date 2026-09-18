@@ -71,7 +71,11 @@ function adminRegDaftar(array $setup, string $status = 'pending'): Registration
 }
 
 it('tamu diarahkan ke login pada panel pendaftaran admin', function (): void {
+    $setup = adminRegSetup();
+    $reg = adminRegDaftar($setup);
+
     $this->get(route('admin.registrations.index'))->assertRedirect(route('login'));
+    $this->get(route('admin.registrations.show', $reg->id))->assertRedirect(route('login'));
 });
 
 it('super_admin melihat pendaftaran lintas organisasi', function (): void {

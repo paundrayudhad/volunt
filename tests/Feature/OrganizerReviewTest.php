@@ -90,12 +90,23 @@ it('daftar seleksi mendukung filter status dan paginasi', function (): void {
     $setup = seleksiTesSetup();
     $pending = seleksiTesDaftar($setup, null, 'pending');
     $review = seleksiTesDaftar($setup);
+    foreach (range(1, 14) as $i) {
+        seleksiTesDaftar($setup, null, 'pending');
+    }
 
-    $this->actingAs($setup['owner'])
-        ->get(route('organizer.events.registrations.index', [$setup['org']->slug, $setup['event']->slug, 'status' => 'under_review']))
-        ->assertOk()
+    $response = $this->actingAs($setup['owner'])
+        ->get(route('organizer.events.registrations.index', [$setup['org']->slug, $setup['event']->slug, 'status' => 'under_review']));
+
+    $response->assertOk()
         ->assertSee($review->user->name)
         ->assertDontSee($pending->user->name);
+
+    $page = $this->actingAs($setup['owner'])
+        ->get(route('organizer.events.registrations.index', [$setup['org']->slug, $setup['event']->slug]));
+
+    $page->assertOk();
+    expect($page->viewData('registrations')->perPage())->toBe(15)
+        ->and($page->viewData('registrations')->total())->toBe(16);
 });
 
 it('review under_review ke accepted menaikkan counter kuota', function (): void {
@@ -204,6 +215,37 @@ it('bulk dengan satu id lintas event gagal 404 dan rollback', function (): void 
     expect($reg->refresh()->status)->toBe('under_review')
         ->and($asing->refresh()->status)->toBe('under_review')
         ->and($setup['role']->refresh()->accepted_count)->toBe(0);
+});
+
+it('staff read-only tidak boleh bulk walau boleh melihat daftar', function (): void {
+    $setup = seleksiTesSetup();
+    $staf = User::factory()->create();
+    OrganizationMember::unguarded(fn () => OrganizationMember::create([
+        'organization_id' => $setup['org']->id,
+        'user_id' => $staf->id,
+        'role' => 'staff',
+        'status' => 'active',
+        'joined_at' => now(),
+    ]));
+    app(MembershipService::class)->syncPermissions($staf->refresh(), $setup['org']);
+    $staf->refresh()->givePermissionTo('registration.read');
+    $reg = seleksiTesDaftar($setup);
+
+    expect($staf->refresh()->can('registration.read'))->toBeTrue()
+        ->and($staf->refresh()->can('registration.review'))->toBeFalse();
+
+    $this->actingAs($staf->refresh())
+        ->get(route('organizer.events.registrations.index', [$setup['org']->slug, $setup['event']->slug]))
+        ->assertOk();
+
+    $this->actingAs($staf->refresh())->withSession(seleksiTesKonfirmasi())
+        ->post(route('organizer.events.registrations.bulk', [$setup['org']->slug, $setup['event']->slug]), [
+            'ids' => [$reg->id],
+            'action' => 'accepted',
+        ])
+        ->assertForbidden();
+
+    expect($reg->refresh()->status)->toBe('under_review');
 });
 
 it('staff tanpa permission registration.review mendapat 403', function (): void {

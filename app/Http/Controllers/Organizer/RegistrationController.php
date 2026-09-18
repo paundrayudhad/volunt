@@ -25,7 +25,7 @@ class RegistrationController extends Controller
 
         $status = $request->query('status');
 
-        $pendaftaran = Registration::where('event_id', $event->id)
+        $items = Registration::where('event_id', $event->id)
             ->with(['user', 'role'])
             ->when(
                 in_array($status, ['pending', 'under_review', 'accepted', 'rejected', 'waitlisted', 'cancelled', 'withdrawn'], true),
@@ -38,9 +38,9 @@ class RegistrationController extends Controller
         return view('organizer.events.registrations.index', [
             'org' => $organization,
             'event' => $event,
-            'pendaftaran' => $pendaftaran,
-            'statusDipilih' => in_array($status, ['pending', 'under_review', 'accepted', 'rejected', 'waitlisted', 'cancelled', 'withdrawn'], true) ? $status : '',
-            'daftarStatus' => ['pending', 'under_review', 'accepted', 'rejected', 'waitlisted', 'cancelled', 'withdrawn'],
+            'registrations' => $items,
+            'selectedStatus' => in_array($status, ['pending', 'under_review', 'accepted', 'rejected', 'waitlisted', 'cancelled', 'withdrawn'], true) ? $status : '',
+            'statusOptions' => ['pending', 'under_review', 'accepted', 'rejected', 'waitlisted', 'cancelled', 'withdrawn'],
         ]);
     }
 
@@ -53,7 +53,7 @@ class RegistrationController extends Controller
         return view('organizer.events.registrations.show', [
             'org' => $organization,
             'event' => $event,
-            'pendaftaran' => $registration,
+            'registration' => $registration,
         ]);
     }
 
