@@ -21,8 +21,8 @@
                     @endif
                     @if ($field->options->isNotEmpty())
                         <ul class="mt-3 list-disc pl-5 text-sm">
-                            @foreach ($field->options as $opsi)
-                                <li>{{ $opsi->label }} ({{ $opsi->value }})</li>
+                            @foreach ($field->options as $option)
+                                <li>{{ $option->label }} ({{ $option->value }})</li>
                             @endforeach
                         </ul>
                     @endif

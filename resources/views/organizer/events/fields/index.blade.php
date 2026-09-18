@@ -22,14 +22,14 @@
                         @endcan
                     </div>
 
-                    @if ($daftar->isEmpty())
+                    @if ($fields->isEmpty())
                         <p class="mt-4 text-sm">Belum ada field pada event ini.</p>
                     @else
                         <ul class="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
-                            @foreach ($daftar as $satu)
+                            @foreach ($fields as $field)
                                 <li class="py-3">
-                                    <a href="{{ route('organizer.events.fields.show', [$org->slug, $event->slug, $satu->id]) }}" class="underline font-medium">{{ $satu->label }}</a>
-                                    <p class="text-sm text-gray-500">Tipe: {{ $satu->type }} — {{ $satu->required ? 'Wajib' : 'Opsional' }} — {{ $satu->is_active ? 'Aktif' : 'Nonaktif' }}</p>
+                                    <a href="{{ route('organizer.events.fields.show', [$org->slug, $event->slug, $field->id]) }}" class="underline font-medium">{{ $field->label }}</a>
+                                    <p class="text-sm text-gray-500">Tipe: {{ $field->type }} — {{ $field->required ? 'Wajib' : 'Opsional' }} — {{ $field->is_active ? 'Aktif' : 'Nonaktif' }}</p>
                                 </li>
                             @endforeach
                         </ul>

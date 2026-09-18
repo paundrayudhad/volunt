@@ -22,8 +22,8 @@
                         <x-input-label for="type" value="Tipe" />
                         <select id="type" name="type" required
                             class="mt-1 block w-full rounded border-gray-300 dark:bg-gray-700">
-                            @foreach ($types as $tipe)
-                                <option value="{{ $tipe }}" @selected(old('type') == $tipe)>{{ $tipe }}</option>
+                            @foreach ($types as $type)
+                                <option value="{{ $type }}" @selected(old('type') == $type)>{{ $type }}</option>
                             @endforeach
                         </select>
                         <x-input-error :messages="$errors->get('type')" class="mt-2" />

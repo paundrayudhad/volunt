@@ -23,8 +23,8 @@
                         <x-input-label for="type" value="Tipe" />
                         <select id="type" name="type" required
                             class="mt-1 block w-full rounded border-gray-300 dark:bg-gray-700">
-                            @foreach ($types as $tipe)
-                                <option value="{{ $tipe }}" @selected(old('type', $field->type) == $tipe)>{{ $tipe }}</option>
+                            @foreach ($types as $type)
+                                <option value="{{ $type }}" @selected(old('type', $field->type) == $type)>{{ $type }}</option>
                             @endforeach
                         </select>
                         <x-input-error :messages="$errors->get('type')" class="mt-2" />
@@ -61,6 +61,14 @@
                             <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $field->is_active)) />
                             Aktif
                         </label>
+                    </div>
+
+                    <div>
+                        <x-input-label value="Opsi (khusus: {{ implode(', ', $optionTypes) }})" />
+                        <p class="text-xs text-gray-500">Format satu baris: label|value — contoh: Kecil|S</p>
+                        <textarea id="options" name="options_text" rows="3"
+                            class="mt-1 block w-full rounded border-gray-300 dark:bg-gray-700">{{ old('options_text', $optionsText) }}</textarea>
+                        <x-input-error :messages="$errors->get('options')" class="mt-2" />
                     </div>
 
                     <x-primary-button>Simpan perubahan</x-primary-button>

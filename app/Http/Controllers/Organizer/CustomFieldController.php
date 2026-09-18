@@ -21,9 +21,9 @@ class CustomFieldController extends Controller
     {
         Gate::authorize('manage', [EventCustomField::class, $event]);
 
-        $daftar = $event->customFields()->with('options')->orderBy('sort_order')->orderBy('id')->get();
+        $fields = $event->customFields()->with('options')->orderBy('sort_order')->orderBy('id')->get();
 
-        return view('organizer.events.fields.index', ['org' => $organization, 'event' => $event, 'daftar' => $daftar]);
+        return view('organizer.events.fields.index', ['org' => $organization, 'event' => $event, 'fields' => $fields]);
     }
 
     public function create(Organization $organization, Event $event): View
@@ -46,7 +46,7 @@ class CustomFieldController extends Controller
             $field = $event->customFields()->create(
                 array_intersect_key($valid, array_flip((new EventCustomField)->getFillable()))
             );
-            $this->simpanOpsi($field, $valid['options'] ?? []);
+            $this->saveOptions($field, $valid['options'] ?? []);
             $this->audit->record($request->user(), 'field.created', EventCustomField::class, $field->id, [
                 'organization_id' => $event->organization_id,
                 'event_id' => $event->id,
@@ -73,6 +73,9 @@ class CustomFieldController extends Controller
         Gate::authorize('manage', $field);
 
         $field->load('options');
+        $optionsText = $field->options->sortBy('sort_order')
+            ->map(fn ($option) => $option->label.'|'.$option->value)
+            ->implode("\n");
 
         return view('organizer.events.fields.edit', [
             'org' => $organization,
@@ -80,6 +83,7 @@ class CustomFieldController extends Controller
             'field' => $field,
             'types' => EventCustomField::TYPES,
             'optionTypes' => ManageCustomFieldRequest::OPTION_TYPES,
+            'optionsText' => $optionsText,
         ]);
     }
 
@@ -89,15 +93,15 @@ class CustomFieldController extends Controller
 
         DB::transaction(function () use ($field, $event, $valid, $request): void {
             $payload = array_intersect_key($valid, array_flip($field->getFillable()));
-            $lama = $field->only(array_keys($payload));
+            $old = $field->only(array_keys($payload));
             $field->fill($payload)->save();
             if (array_key_exists('options', $valid)) {
-                $this->simpanOpsi($field, $valid['options'] ?? []);
+                $this->saveOptions($field, $valid['options'] ?? []);
             }
             $this->audit->record($request->user(), 'field.updated', EventCustomField::class, $field->id, [
                 'organization_id' => $event->organization_id,
                 'event_id' => $event->id,
-                'old' => $lama,
+                'old' => $old,
                 'new' => $payload,
             ]);
         });
@@ -122,16 +126,16 @@ class CustomFieldController extends Controller
             ->with('status', 'Field berhasil dihapus.');
     }
 
-    /** @param array<int, array{label: string, value: string, sort_order?: int}> $opsi */
-    private function simpanOpsi(EventCustomField $field, array $opsi): void
+    /** @param array<int, array{label: string, value: string, sort_order?: int}> $options */
+    private function saveOptions(EventCustomField $field, array $options): void
     {
         $field->options()->delete();
 
-        foreach (array_values($opsi) as $indeks => $satu) {
+        foreach (array_values($options) as $index => $option) {
             $field->options()->create([
-                'label' => $satu['label'],
-                'value' => $satu['value'],
-                'sort_order' => $satu['sort_order'] ?? $indeks,
+                'label' => $option['label'],
+                'value' => $option['value'],
+                'sort_order' => $option['sort_order'] ?? $index,
             ]);
         }
     }
