@@ -236,6 +236,39 @@ it('hadirTesCheckOutValidTerisi', function (): void {
         ->and(AttendanceLog::where('attendance_id', $hadir->id)->where('action', 'check_out')->count())->toBe(1);
 });
 
+it('hadirTesCheckOutReplayIdempotencySama', function (): void {
+    $setup = hadirTesSetup();
+    $this->travelTo((clone $setup['shift']->start_at)->addMinutes(30));
+    $layanan = app(AttendanceService::class);
+    $masuk = $layanan->issueToken($setup['assignment'], $setup['owner'])['raw'];
+
+    $this->actingAs($setup['owner'])
+        ->post(route('organizer.events.attendances.process', [$setup['org']->slug, $setup['event']->slug]), hadirTesPindai($masuk))
+        ->assertRedirect();
+
+    $keluar = $layanan->issueToken($setup['assignment'], $setup['owner'])['raw'];
+    $kunci = (string) Str::uuid();
+    $payload = ['token' => $keluar, 'action' => 'check_out', 'idempotency_key' => $kunci];
+
+    $this->actingAs($setup['owner'])
+        ->post(route('organizer.events.attendances.process', [$setup['org']->slug, $setup['event']->slug]), $payload)
+        ->assertRedirect();
+
+    $pertama = Attendance::where('assignment_id', $setup['assignment']->id)->firstOrFail();
+    $keluarPada = (string) $pertama->checked_out_at;
+    $jumlahLog = AttendanceLog::where('attendance_id', $pertama->id)->where('action', 'check_out')->count();
+
+    $this->actingAs($setup['owner'])
+        ->post(route('organizer.events.attendances.process', [$setup['org']->slug, $setup['event']->slug]), $payload)
+        ->assertRedirect();
+
+    $kedua = Attendance::where('assignment_id', $setup['assignment']->id)->firstOrFail();
+    expect($kedua->id)->toBe($pertama->id)
+        ->and((string) $kedua->checked_out_at)->toBe($keluarPada)
+        ->and(Attendance::where('assignment_id', $setup['assignment']->id)->count())->toBe(1)
+        ->and(AttendanceLog::where('attendance_id', $pertama->id)->where('action', 'check_out')->count())->toBe($jumlahLog);
+});
+
 it('hadirTesManualTanpaAlasan422', function (): void {
     $setup = hadirTesSetup();
     $this->travelTo((clone $setup['shift']->start_at)->addMinutes(5));

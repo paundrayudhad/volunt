@@ -82,10 +82,22 @@ class AttendanceService
 
     public function checkOut(string $mentah, User $actor, string $kunci, ?int $eventId = null): Attendance
     {
-        return DB::transaction(function () use ($mentah, $actor, $eventId): Attendance {
+        return DB::transaction(function () use ($mentah, $actor, $kunci, $eventId): Attendance {
             $token = $this->cariToken($mentah, $eventId);
             $assignment = $token->assignment()->firstOrFail();
             $shift = $assignment->shift()->firstOrFail();
+
+            $replay = Attendance::where('idempotency_key', $kunci)->first();
+            if ($replay instanceof Attendance) {
+                abort_unless(
+                    (int) $replay->assignment_id === (int) $assignment->id
+                        && (int) $replay->shift_id === (int) $shift->id,
+                    404,
+                    'Token tidak termasuk event ini.'
+                );
+
+                return $replay;
+            }
 
             $hadir = Attendance::where('assignment_id', $assignment->id)
                 ->where('shift_id', $shift->id)
