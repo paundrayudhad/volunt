@@ -414,3 +414,36 @@ it('hadirTesManualAlasanSembilanKarakter422', function (): void {
             ->and($e->getMessage())->toBe('Alasan pencatatan manual minimal 10 karakter.');
     }
 });
+
+it('hadirTesCheckOutKeduaKunciBeda422', function (): void {
+    $setup = hadirTesSetup();
+    $this->travelTo((clone $setup['shift']->start_at)->addMinutes(30));
+    $layanan = app(AttendanceService::class);
+    $masuk = $layanan->issueToken($setup['assignment'], $setup['owner'])['raw'];
+
+    $this->actingAs($setup['owner'])
+        ->post(route('organizer.events.attendances.process', [$setup['org']->slug, $setup['event']->slug]), hadirTesPindai($masuk))
+        ->assertRedirect();
+
+    $keluar = $layanan->issueToken($setup['assignment'], $setup['owner'])['raw'];
+
+    $this->actingAs($setup['owner'])
+        ->post(route('organizer.events.attendances.process', [$setup['org']->slug, $setup['event']->slug]), hadirTesPindai($keluar, 'check_out'))
+        ->assertRedirect();
+
+    $hadir = Attendance::where('assignment_id', $setup['assignment']->id)->firstOrFail();
+    $keluarPada = (string) $hadir->checked_out_at;
+    $jumlahLog = AttendanceLog::where('attendance_id', $hadir->id)->count();
+
+    $baru = $layanan->issueToken($setup['assignment'], $setup['owner'])['raw'];
+
+    $this->actingAs($setup['owner'])
+        ->postJson(route('organizer.events.attendances.process', [$setup['org']->slug, $setup['event']->slug]), hadirTesPindai($baru, 'check_out'))
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Sudah check-out.');
+
+    $tetap = Attendance::where('assignment_id', $setup['assignment']->id)->firstOrFail();
+    expect((string) $tetap->checked_out_at)->toBe($keluarPada)
+        ->and(Attendance::where('assignment_id', $setup['assignment']->id)->count())->toBe(1)
+        ->and(AttendanceLog::where('attendance_id', $hadir->id)->count())->toBe($jumlahLog);
+});

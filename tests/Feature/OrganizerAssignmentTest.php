@@ -263,3 +263,46 @@ it('tugasTesReassignConfirmCancelHappyPath', function (): void {
     expect($tugas->refresh()->status)->toBe('cancelled')
         ->and($baru->refresh()->filled_count)->toBe(0);
 });
+
+it('tugasTesBulkDariDaftarKandidatSukses', function (): void {
+    $setup = tugasTesSetup(10);
+    app(AssignmentService::class)->assign(tugasTesRegistrasi($setup), $setup['shift'], $setup['owner']);
+    $pendaftar = collect([tugasTesRegistrasi($setup), tugasTesRegistrasi($setup), tugasTesRegistrasi($setup)]);
+    $ids = $pendaftar->pluck('id')->all();
+
+    $halaman = $this->actingAs($setup['owner'])
+        ->get(route('organizer.events.assignments.index', [$setup['org']->slug, $setup['event']->slug]));
+
+    $halaman->assertOk();
+    $terdaftar = $halaman->viewData('candidates')->pluck('id')->all();
+    foreach ($ids as $id) {
+        expect($terdaftar)->toContain($id);
+        $halaman->assertSee('name="ids[]" value="'.$id.'"', false);
+    }
+
+    $this->actingAs($setup['owner'])->withSession(tugasTesKonfirmasi())
+        ->post(route('organizer.events.assignments.bulk', [$setup['org']->slug, $setup['event']->slug]), [
+            'ids' => $ids,
+            'shift_id' => $setup['shift']->id,
+        ])
+        ->assertRedirect(route('organizer.events.assignments.index', [$setup['org']->slug, $setup['event']->slug]));
+
+    expect(Assignment::whereIn('registration_id', $ids)->where('status', 'assigned')->count())->toBe(3)
+        ->and($setup['shift']->refresh()->filled_count)->toBe(4);
+});
+
+it('tugasTesBulkTidakMenampilkanSudahDitugaskan', function (): void {
+    $setup = tugasTesSetup(10);
+    $sudah = tugasTesRegistrasi($setup);
+    app(AssignmentService::class)->assign($sudah, $setup['shift'], $setup['owner']);
+    $bebas = tugasTesRegistrasi($setup);
+
+    $halaman = $this->actingAs($setup['owner'])
+        ->get(route('organizer.events.assignments.index', [$setup['org']->slug, $setup['event']->slug]));
+
+    $halaman->assertOk();
+    $terdaftar = $halaman->viewData('candidates')->pluck('id')->all();
+    expect($terdaftar)->not->toContain($sudah->id)
+        ->and($terdaftar)->toContain($bebas->id);
+    $halaman->assertDontSee('name="ids[]" value="'.$sudah->id.'"', false);
+});

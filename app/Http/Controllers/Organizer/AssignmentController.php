@@ -6,6 +6,8 @@ use App\Exceptions\ShiftFullException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AssignRequest;
 use App\Http\Requests\BulkAssignRequest;
+use App\Http\Requests\CancelAssignmentRequest;
+use App\Http\Requests\ReassignAssignmentRequest;
 use App\Models\Assignment;
 use App\Models\Event;
 use App\Models\EventShift;
@@ -53,7 +55,8 @@ class AssignmentController extends Controller
             'shifts' => EventShift::where('event_id', $event->id)->orderBy('start_at')->get(),
             'candidates' => Registration::where('event_id', $event->id)
                 ->where('status', 'accepted')
-                ->with('user')
+                ->whereDoesntHave('assignment', fn ($q) => $q->whereIn('status', Assignment::ACTIVE))
+                ->with(['user', 'role'])
                 ->orderByDesc('id')
                 ->limit(100)
                 ->get(),
@@ -104,13 +107,9 @@ class AssignmentController extends Controller
             ->with('status', 'Relawan berhasil ditugaskan ke shift.');
     }
 
-    public function reassign(Request $request, Organization $organization, Event $event, Assignment $assignment): RedirectResponse
+    public function reassign(ReassignAssignmentRequest $request, Organization $organization, Event $event, Assignment $assignment): RedirectResponse
     {
-        Gate::authorize('manage', $assignment);
-
-        $valid = $request->validate([
-            'shift_id' => ['required', 'integer'],
-        ]);
+        $valid = $request->validated();
 
         $shift = EventShift::whereKey($valid['shift_id'])
             ->where('event_id', $event->id)
@@ -151,13 +150,9 @@ class AssignmentController extends Controller
             ->with('status', 'Assignment berhasil dikonfirmasi.');
     }
 
-    public function cancel(Request $request, Organization $organization, Event $event, Assignment $assignment): RedirectResponse
+    public function cancel(CancelAssignmentRequest $request, Organization $organization, Event $event, Assignment $assignment): RedirectResponse
     {
-        Gate::authorize('manage', $assignment);
-
-        $valid = $request->validate([
-            'reason' => ['nullable', 'string', 'max:2000'],
-        ]);
+        $valid = $request->validated();
 
         try {
             $this->assignments->cancel($assignment, $request->user(), $valid['reason'] ?? null);

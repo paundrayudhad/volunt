@@ -79,48 +79,48 @@
                     @if ($assignments->isEmpty())
                         <p class="mt-6 text-sm">Belum ada penugasan pada event ini.</p>
                     @else
-                        @can('manage', [\App\Models\Assignment::class, $event])
-                            <form method="POST" action="{{ route('organizer.events.assignments.bulk', [$org->slug, $event->slug]) }}" class="mt-6 space-y-3">
-                                @csrf
-                                <ul class="divide-y divide-gray-200 dark:divide-gray-700">
-                                    @foreach ($assignments as $item)
-                                        <li class="py-3 flex items-start gap-3">
-                                            <input type="checkbox" name="ids[]" value="{{ $item->registration_id }}" class="mt-1" />
-                                            <div>
-                                                <a href="{{ route('organizer.events.assignments.show', [$org->slug, $event->slug, $item->id]) }}" class="underline font-medium">{{ $item->user?->name ?? 'Relawan' }}</a>
-                                                <p class="text-sm text-gray-500">Peran: {{ $item->role?->name ?? '-' }} — Shift: {{ $item->shift?->start_at?->format('d M Y H:i') ?? '-' }} — Status: {{ $item->status }}</p>
-                                            </div>
-                                        </li>
-                                    @endforeach
-                                </ul>
-
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <label for="bulk-shift" class="text-sm">Shift tujuan</label>
-                                    <select id="bulk-shift" name="shift_id" class="rounded border-gray-300 dark:bg-gray-700 text-sm">
-                                        @foreach ($shifts as $shift)
-                                            <option value="{{ $shift->id }}">
-                                                {{ $shift->start_at?->format('d M Y H:i') ?? $shift->id }} — {{ $shift->location ?? '-' }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                    <x-primary-button>Terapkan penugasan massal</x-primary-button>
-                                </div>
-                            </form>
-                        @else
-                            <ul class="mt-6 divide-y divide-gray-200 dark:divide-gray-700">
-                                @foreach ($assignments as $item)
-                                    <li class="py-3">
-                                        <a href="{{ route('organizer.events.assignments.show', [$org->slug, $event->slug, $item->id]) }}" class="underline font-medium">{{ $item->user?->name ?? 'Relawan' }}</a>
-                                        <p class="text-sm text-gray-500">Peran: {{ $item->role?->name ?? '-' }} — Shift: {{ $item->shift?->start_at?->format('d M Y H:i') ?? '-' }} — Status: {{ $item->status }}</p>
-                                    </li>
-                                @endforeach
-                            </ul>
-                        @endcan
+                        <ul class="mt-6 divide-y divide-gray-200 dark:divide-gray-700">
+                            @foreach ($assignments as $item)
+                                <li class="py-3">
+                                    <a href="{{ route('organizer.events.assignments.show', [$org->slug, $event->slug, $item->id]) }}" class="underline font-medium">{{ $item->user?->name ?? 'Relawan' }}</a>
+                                    <p class="text-sm text-gray-500">Peran: {{ $item->role?->name ?? '-' }} — Shift: {{ $item->shift?->start_at?->format('d M Y H:i') ?? '-' }} — Status: {{ $item->status }}</p>
+                                </li>
+                            @endforeach
+                        </ul>
 
                         <div class="mt-4">
                             {{ $assignments->links() }}
                         </div>
                     @endif
+
+                    @can('manage', [\App\Models\Assignment::class, $event])
+                        <form method="POST" action="{{ route('organizer.events.assignments.bulk', [$org->slug, $event->slug]) }}" class="mt-6 space-y-3">
+                            @csrf
+                            <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+                                @foreach ($candidates as $candidate)
+                                    <li class="py-3 flex items-start gap-3">
+                                        <input type="checkbox" name="ids[]" value="{{ $candidate->id }}" class="mt-1" />
+                                        <div>
+                                            <p class="font-medium">{{ $candidate->user?->name ?? 'Pendaftar' }}</p>
+                                            <p class="text-sm text-gray-500">Peran: {{ $candidate->role?->name ?? '-' }}</p>
+                                        </div>
+                                    </li>
+                                @endforeach
+                            </ul>
+
+                            <div class="flex flex-wrap items-center gap-2">
+                                <label for="bulk-shift" class="text-sm">Shift tujuan</label>
+                                <select id="bulk-shift" name="shift_id" class="rounded border-gray-300 dark:bg-gray-700 text-sm">
+                                    @foreach ($shifts as $shift)
+                                        <option value="{{ $shift->id }}">
+                                            {{ $shift->start_at?->format('d M Y H:i') ?? $shift->id }} — {{ $shift->location ?? '-' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <x-primary-button>Terapkan penugasan massal</x-primary-button>
+                            </div>
+                        </form>
+                    @endcan
                 </div>
             </div>
         </div>

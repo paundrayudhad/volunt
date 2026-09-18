@@ -111,12 +111,10 @@ class AttendanceService
                 ->first();
             abort_if($hadir === null || $hadir->checked_in_at === null, 422, 'Belum check-in.');
 
-            if ($hadir->checked_out_at !== null) {
-                return $hadir;
-            }
+            $this->pastikanTokenBisaDipakai($token);
+            abort_if($hadir->checked_out_at !== null, 422, 'Sudah check-out.');
 
             $this->pastikanJendela($shift);
-            $this->pastikanTokenBisaDipakai($token);
 
             abort_unless($assignment->isActive(), 422, 'Assignment tidak aktif.');
             abort_if(now()->lt($hadir->checked_in_at), 422, 'Check-out harus setelah check-in.');
