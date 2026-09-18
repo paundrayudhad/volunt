@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizatio
 use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
 use App\Http\Controllers\OrganizationRequestController;
 use App\Http\Controllers\Organizer\AssignmentController as OrganizerAssignmentController;
+use App\Http\Controllers\Organizer\AttendanceController as OrganizerAttendanceController;
 use App\Http\Controllers\Organizer\CustomFieldController;
 use App\Http\Controllers\Organizer\DivisionController;
 use App\Http\Controllers\Organizer\EventController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\Organizer\RegistrationController as OrganizerRegistrati
 use App\Http\Controllers\Organizer\RoleController;
 use App\Http\Controllers\Organizer\ShiftController;
 use App\Http\Controllers\PublicEventController;
+use App\Http\Controllers\Volunteer\AttendanceController as VolunteerAttendanceController;
 use App\Http\Controllers\VolunteerProfileController;
 use App\Http\Controllers\VolunteerRegistrationController;
 use Illuminate\Support\Facades\Route;
@@ -65,6 +67,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('registrations.store');
     Route::post('registrations/{registrationVol}/withdraw', [VolunteerRegistrationController::class, 'withdraw'])
         ->name('registrations.withdraw');
+
+    Route::get('my/assignments/{assignmentVol}/qr', [VolunteerAttendanceController::class, 'show'])
+        ->name('my.qr.show');
+    Route::post('my/assignments/{assignmentVol}/qr/rotate', [VolunteerAttendanceController::class, 'rotate'])
+        ->middleware('throttle:10,1')
+        ->name('my.qr.rotate');
 
     Route::get('profile/volunteer', [VolunteerProfileController::class, 'edit'])
         ->name('profile.volunteer.edit');
@@ -173,6 +181,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         Route::post('confirm', [OrganizerAssignmentController::class, 'confirm'])->name('confirm');
                         Route::post('cancel', [OrganizerAssignmentController::class, 'cancel'])->name('cancel');
                     });
+                });
+
+                Route::prefix('attendances')->name('attendances.')->group(function () {
+                    Route::get('/', [OrganizerAttendanceController::class, 'index'])->name('index');
+                    Route::get('scan', [OrganizerAttendanceController::class, 'scan'])->name('scan');
+                    Route::post('scan', [OrganizerAttendanceController::class, 'process'])
+                        ->middleware('throttle:30,1')
+                        ->name('process');
+                    Route::post('manual', [OrganizerAttendanceController::class, 'manual'])
+                        ->middleware('throttle:30,1')
+                        ->name('manual');
                 });
             });
         });

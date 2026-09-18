@@ -115,6 +115,10 @@ class AppServiceProvider extends ServiceProvider
             ->where('user_id', auth()->id())
             ->firstOrFail());
 
+        Route::bind('assignmentVol', fn (string $value): Assignment => Assignment::whereKey($value)
+            ->whereHas('registration', fn ($query) => $query->where('user_id', auth()->id()))
+            ->firstOrFail());
+
         Route::bind('assignment', function (string $value): Assignment {
             $event = request()->route()?->parameter('event');
             $eventId = $event instanceof EventModel ? $event->getKey() : null;
