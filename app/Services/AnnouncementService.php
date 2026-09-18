@@ -7,6 +7,7 @@ use App\Models\Announcement;
 use App\Models\Assignment;
 use App\Models\Registration;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -27,15 +28,21 @@ class AnnouncementService
         return match ($pengumuman->target_type) {
             'division' => $this->penerimaAssignment(
                 $eventId,
-                fn ($query) => $query->where('assignments.division_id', (int) $pengumuman->target_id)
+                function (Builder $query) use ($pengumuman): void {
+                    $query->where('assignments.division_id', (int) $pengumuman->target_id);
+                }
             ),
             'role' => $this->penerimaAssignment(
                 $eventId,
-                fn ($query) => $query->where('assignments.role_id', (int) $pengumuman->target_id)
+                function (Builder $query) use ($pengumuman): void {
+                    $query->where('assignments.role_id', (int) $pengumuman->target_id);
+                }
             ),
             'shift' => $this->penerimaAssignment(
                 $eventId,
-                fn ($query) => $query->where('assignments.shift_id', (int) $pengumuman->target_id)
+                function (Builder $query) use ($pengumuman): void {
+                    $query->where('assignments.shift_id', (int) $pengumuman->target_id);
+                }
             ),
             'individual' => $diterima->where('user_id', (int) $pengumuman->target_id)->with('user')->get()->pluck('user')->filter(),
             default => $diterima->with('user')->get()->pluck('user')->filter(),
@@ -46,6 +53,7 @@ class AnnouncementService
     {
         return DB::transaction(function () use ($pengumuman, $aktor): Announcement {
             $pengumuman = $pengumuman->refresh();
+            abort_if($pengumuman->published_at !== null, 422, 'Pengumuman sudah diterbitkan.');
             $this->validasiTarget($pengumuman);
 
             $pengumuman->forceFill(['published_at' => now()])->save();
@@ -140,7 +148,7 @@ class AnnouncementService
     }
 
     /**
-     * @param  callable(\Illuminate\Database\Eloquent\Builder<Assignment>): void  $filter
+     * @param  callable(Builder<Assignment>): void  $filter
      * @return Collection<int, User>
      */
     private function penerimaAssignment(int $eventId, callable $filter): Collection

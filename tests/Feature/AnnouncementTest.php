@@ -2,6 +2,7 @@
 
 use App\Jobs\BroadcastAnnouncement;
 use App\Models\Announcement;
+use App\Models\Assignment;
 use App\Models\AuditLog;
 use App\Models\Event;
 use App\Models\EventDivision;
@@ -84,7 +85,7 @@ function umumTesSetup(): array
     ];
 }
 
-/** @return array{user: User, assignment: \App\Models\Assignment} */
+/** @return array{user: User, assignment: Assignment} */
 function umumTesTugaskan(array $setup, ?User $user = null, ?EventRole $role = null, ?EventShift $shift = null): array
 {
     $user ??= User::factory()->create();
@@ -286,4 +287,87 @@ it('umumTesGuestLoginDanBacaNotifikasiOwnOnly', function (): void {
         ->get(route('notifications.index'))
         ->assertOk()
         ->assertSee($judulMilik);
+});
+
+/** @return array<string, mixed> */
+function umumTesPayload(array $override = []): array
+{
+    return array_merge([
+        'title' => 'Pengumuman '.Str::random(8),
+        'body' => 'Isi pengumuman untuk relawan event ini.',
+        'target_type' => 'event',
+    ], $override);
+}
+
+it('umumTesTerbitUlangDitolak422TanpaNotifikasiBaru', function (): void {
+    $setup = umumTesSetup();
+    ['user' => $relawan] = umumTesTugaskan($setup);
+    $draf = umumTesDraf($setup);
+
+    $this->actingAs($setup['owner'])
+        ->post(route('organizer.events.announcements.publish', umumTesParam($setup, $draf)))
+        ->assertRedirect(route('organizer.events.announcements.show', umumTesParam($setup, $draf)));
+
+    $jumlah = $relawan->refresh()->notifications()->count();
+    expect($jumlah)->toBe(1);
+
+    $this->actingAs($setup['owner'])
+        ->postJson(route('organizer.events.announcements.publish', umumTesParam($setup, $draf)))
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Pengumuman sudah diterbitkan.');
+
+    expect($relawan->refresh()->notifications()->count())->toBe($jumlah)
+        ->and(AuditLog::where('action', 'announcement.publish')->where('resource_id', (string) $draf->id)->count())->toBe(1);
+});
+
+it('umumTesSimpanDivisiAsingDitolak422', function (): void {
+    $setup = umumTesSetup();
+    $asing = umumTesSetup();
+
+    $this->actingAs($setup['owner'])
+        ->postJson(route('organizer.events.announcements.store', umumTesParam($setup)), umumTesPayload([
+            'target_type' => 'division',
+            'target_id' => $asing['division']->id,
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('target_id');
+
+    expect(Announcement::where('event_id', $setup['event']->id)->count())->toBe(0);
+});
+
+it('umumTesSimpanIndividuBelumDiterimaDitolak422', function (): void {
+    $setup = umumTesSetup();
+    $calon = User::factory()->create();
+    Registration::factory()->create([
+        'user_id' => $calon->id,
+        'event_id' => $setup['event']->id,
+        'role_id' => $setup['role']->id,
+        'status' => 'pending',
+    ]);
+
+    $this->actingAs($setup['owner'])
+        ->postJson(route('organizer.events.announcements.store', umumTesParam($setup)), umumTesPayload([
+            'target_type' => 'individual',
+            'target_id' => $calon->id,
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('target_id');
+
+    expect(Announcement::where('event_id', $setup['event']->id)->count())->toBe(0);
+});
+
+it('umumTesSimpanDrafValidTersimpan', function (): void {
+    $setup = umumTesSetup();
+
+    $this->actingAs($setup['owner'])
+        ->post(route('organizer.events.announcements.store', umumTesParam($setup)), umumTesPayload([
+            'target_type' => 'division',
+            'target_id' => $setup['division']->id,
+        ]))
+        ->assertRedirect();
+
+    $draf = Announcement::where('event_id', $setup['event']->id)->firstOrFail();
+    expect($draf->target_type)->toBe('division')
+        ->and((int) $draf->target_id)->toBe($setup['division']->id)
+        ->and($draf->published_at)->toBeNull();
 });
