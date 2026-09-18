@@ -20,6 +20,7 @@ use App\Policies\InvitationPolicy;
 use App\Policies\MemberPolicy;
 use App\Policies\OrganizationPolicy;
 use App\Policies\OrganizationRequestPolicy;
+use App\Policies\RegistrationPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\ShiftPolicy;
 use App\Services\SecurityService;
@@ -74,6 +75,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(EventDivision::class, DivisionPolicy::class);
         Gate::policy(EventRole::class, RolePolicy::class);
         Gate::policy(EventShift::class, ShiftPolicy::class);
+        Gate::policy(Registration::class, RegistrationPolicy::class);
 
         Route::bind('organization', fn (string $value) => Organization::where('slug', $value)
             ->whereIn('id', auth()->user()?->organizations()->wherePivot('status', 'active')->pluck('organizations.id') ?? [])
@@ -109,6 +111,15 @@ class AppServiceProvider extends ServiceProvider
         Route::bind('registrationVol', fn (string $value): Registration => Registration::whereKey($value)
             ->where('user_id', auth()->id())
             ->firstOrFail());
+
+        Route::bind('registration', function (string $value): Registration {
+            $event = request()->route()?->parameter('event');
+            $eventId = $event instanceof EventModel ? $event->getKey() : null;
+
+            return Registration::whereKey($value)
+                ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
+                ->firstOrFail();
+        });
 
         Route::bind('division', function (string $value): EventDivision {
             $event = request()->route()?->parameter('event');

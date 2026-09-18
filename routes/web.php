@@ -13,6 +13,8 @@ use App\Http\Controllers\Organizer\EventController;
 use App\Http\Controllers\Organizer\InvitationController;
 use App\Http\Controllers\Organizer\MemberController;
 use App\Http\Controllers\Organizer\OrganizationController;
+use App\Http\Controllers\Organizer\RegistrationController as OrganizerRegistrationController;
+use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
 use App\Http\Controllers\Organizer\RoleController;
 use App\Http\Controllers\Organizer\ShiftController;
 use App\Http\Controllers\PublicEventController;
@@ -142,6 +144,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         Route::delete('/', [CustomFieldController::class, 'destroy'])->name('destroy');
                     });
                 });
+
+                Route::prefix('registrations')->name('registrations.')->group(function () {
+                    Route::get('/', [OrganizerRegistrationController::class, 'index'])->name('index');
+                    Route::post('bulk', [OrganizerRegistrationController::class, 'bulkReview'])
+                        ->middleware('password.confirm')
+                        ->name('bulk');
+                    Route::prefix('{registration}')->group(function () {
+                        Route::get('/', [OrganizerRegistrationController::class, 'show'])->name('show');
+                        Route::post('review', [OrganizerRegistrationController::class, 'review'])
+                            ->middleware('password.confirm')
+                            ->name('review');
+                    });
+                });
             });
         });
     });
@@ -169,6 +184,9 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
     Route::post('events/{eventAdmin}/cancel', [AdminEventController::class, 'cancel'])
         ->middleware('password.confirm')
         ->name('events.cancel');
+
+    Route::get('registrations', [AdminRegistrationController::class, 'index'])->name('registrations.index');
+    Route::get('registrations/{registrationAdmin}', [AdminRegistrationController::class, 'show'])->name('registrations.show');
 
     Route::get('logs', [AdminLogController::class, 'index'])->name('logs.index');
 });
