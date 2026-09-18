@@ -33,6 +33,8 @@ class MembershipService
         'division.manage',
         'role.manage',
         'shift.manage',
+        'registration.read',
+        'registration.review',
     ];
 
     public const OWNER_PERMS = self::GRANULAR;

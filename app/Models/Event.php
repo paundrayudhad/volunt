@@ -73,6 +73,18 @@ class Event extends Model
         return $this->hasMany(EventShift::class);
     }
 
+    /** @return HasMany<Registration, $this> */
+    public function registrations(): HasMany
+    {
+        return $this->hasMany(Registration::class);
+    }
+
+    /** @return HasMany<EventCustomField, $this> */
+    public function customFields(): HasMany
+    {
+        return $this->hasMany(EventCustomField::class);
+    }
+
     /** @param  Builder<Event>  $query */
     public function scopeForOrganization(Builder $query, int $orgId): Builder
     {

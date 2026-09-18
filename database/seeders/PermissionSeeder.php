@@ -30,6 +30,8 @@ class PermissionSeeder extends Seeder
         'division.manage',
         'role.manage',
         'shift.manage',
+        'registration.read',
+        'registration.review',
     ];
 
     public function run(): void

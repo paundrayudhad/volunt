@@ -44,6 +44,12 @@ class EventRole extends Model
         return $this->hasMany(EventShift::class, 'role_id');
     }
 
+    /** @return HasMany<Registration, $this> */
+    public function registrations(): HasMany
+    {
+        return $this->hasMany(Registration::class, 'role_id');
+    }
+
     public function remainingQuota(): int
     {
         return max(0, (int) $this->quota - (int) $this->accepted_count);
