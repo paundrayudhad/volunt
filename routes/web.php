@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationContro
 use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizationRequestController;
 use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
 use App\Http\Controllers\OrganizationRequestController;
+use App\Http\Controllers\Organizer\AssignmentController as OrganizerAssignmentController;
 use App\Http\Controllers\Organizer\CustomFieldController;
 use App\Http\Controllers\Organizer\DivisionController;
 use App\Http\Controllers\Organizer\EventController;
@@ -155,6 +156,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         Route::post('review', [OrganizerRegistrationController::class, 'review'])
                             ->middleware('password.confirm')
                             ->name('review');
+                    });
+                });
+
+                Route::prefix('assignments')->name('assignments.')->group(function () {
+                    Route::get('/', [OrganizerAssignmentController::class, 'index'])->name('index');
+                    Route::post('assign', [OrganizerAssignmentController::class, 'assign'])
+                        ->middleware(['password.confirm', 'throttle:10,1'])
+                        ->name('assign');
+                    Route::post('bulk', [OrganizerAssignmentController::class, 'bulkAssign'])
+                        ->middleware(['password.confirm', 'throttle:10,1'])
+                        ->name('bulk');
+                    Route::prefix('{assignment}')->group(function () {
+                        Route::get('/', [OrganizerAssignmentController::class, 'show'])->name('show');
+                        Route::post('reassign', [OrganizerAssignmentController::class, 'reassign'])->name('reassign');
+                        Route::post('confirm', [OrganizerAssignmentController::class, 'confirm'])->name('confirm');
+                        Route::post('cancel', [OrganizerAssignmentController::class, 'cancel'])->name('cancel');
                     });
                 });
             });

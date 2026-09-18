@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Assignment;
 use App\Models\Event as EventModel;
 use App\Models\EventCustomField;
 use App\Models\EventDivision;
@@ -13,6 +14,7 @@ use App\Models\OrganizationMember;
 use App\Models\OrganizationRequest;
 use App\Models\Registration;
 use App\Models\User;
+use App\Policies\AssignmentPolicy;
 use App\Policies\CustomFieldPolicy;
 use App\Policies\DivisionPolicy;
 use App\Policies\EventPolicy;
@@ -75,6 +77,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(EventDivision::class, DivisionPolicy::class);
         Gate::policy(EventRole::class, RolePolicy::class);
         Gate::policy(EventShift::class, ShiftPolicy::class);
+        Gate::policy(Assignment::class, AssignmentPolicy::class);
         Gate::policy(Registration::class, RegistrationPolicy::class);
 
         Route::bind('organization', fn (string $value) => Organization::where('slug', $value)
@@ -111,6 +114,15 @@ class AppServiceProvider extends ServiceProvider
         Route::bind('registrationVol', fn (string $value): Registration => Registration::whereKey($value)
             ->where('user_id', auth()->id())
             ->firstOrFail());
+
+        Route::bind('assignment', function (string $value): Assignment {
+            $event = request()->route()?->parameter('event');
+            $eventId = $event instanceof EventModel ? $event->getKey() : null;
+
+            return Assignment::whereKey($value)
+                ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
+                ->firstOrFail();
+        });
 
         Route::bind('registration', function (string $value): Registration {
             $event = request()->route()?->parameter('event');
