@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationContro
 use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizationRequestController;
 use App\Http\Controllers\OrganizationRequestController;
 use App\Http\Controllers\Organizer\DivisionController;
+use App\Http\Controllers\Organizer\CustomFieldController;
 use App\Http\Controllers\Organizer\EventController;
 use App\Http\Controllers\Organizer\InvitationController;
 use App\Http\Controllers\Organizer\MemberController;
@@ -108,6 +109,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         Route::get('edit', [ShiftController::class, 'edit'])->name('edit');
                         Route::patch('/', [ShiftController::class, 'update'])->name('update');
                         Route::delete('/', [ShiftController::class, 'destroy'])->name('destroy');
+                    });
+                });
+
+                Route::prefix('fields')->name('fields.')->group(function () {
+                    Route::get('/', [CustomFieldController::class, 'index'])->name('index');
+                    Route::get('create', [CustomFieldController::class, 'create'])->name('create');
+                    Route::post('/', [CustomFieldController::class, 'store'])->name('store');
+                    Route::prefix('{field}')->group(function () {
+                        Route::get('/', [CustomFieldController::class, 'show'])->name('show');
+                        Route::get('edit', [CustomFieldController::class, 'edit'])->name('edit');
+                        Route::patch('/', [CustomFieldController::class, 'update'])->name('update');
+                        Route::delete('/', [CustomFieldController::class, 'destroy'])->name('destroy');
                     });
                 });
             });

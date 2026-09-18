@@ -1,0 +1,41 @@
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
+            {{ __('Daftar Field') }} — {{ $event->name }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+            @if (session('status'))
+                <div class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100 p-4 rounded">
+                    {{ session('status') }}
+                </div>
+            @endif
+
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900 dark:text-gray-100">
+                    <div class="flex items-center justify-between">
+                        <a href="{{ route('organizer.events.show', [$org->slug, $event->slug]) }}" class="underline">Kembali ke event</a>
+                        @can('manage', [\App\Models\EventCustomField::class, $event])
+                            <a href="{{ route('organizer.events.fields.create', [$org->slug, $event->slug]) }}" class="underline">Tambah field</a>
+                        @endcan
+                    </div>
+
+                    @if ($daftar->isEmpty())
+                        <p class="mt-4 text-sm">Belum ada field pada event ini.</p>
+                    @else
+                        <ul class="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
+                            @foreach ($daftar as $satu)
+                                <li class="py-3">
+                                    <a href="{{ route('organizer.events.fields.show', [$org->slug, $event->slug, $satu->id]) }}" class="underline font-medium">{{ $satu->label }}</a>
+                                    <p class="text-sm text-gray-500">Tipe: {{ $satu->type }} — {{ $satu->required ? 'Wajib' : 'Opsional' }} — {{ $satu->is_active ? 'Aktif' : 'Nonaktif' }}</p>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </div>
+</x-app-layout>

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Event as EventModel;
+use App\Models\EventCustomField;
 use App\Models\EventDivision;
 use App\Models\EventRole;
 use App\Models\EventShift;
@@ -12,6 +13,7 @@ use App\Models\OrganizationMember;
 use App\Models\OrganizationRequest;
 use App\Models\User;
 use App\Policies\DivisionPolicy;
+use App\Policies\CustomFieldPolicy;
 use App\Policies\EventPolicy;
 use App\Policies\InvitationPolicy;
 use App\Policies\MemberPolicy;
@@ -67,6 +69,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(OrganizationInvitation::class, InvitationPolicy::class);
         Gate::policy(OrganizationRequest::class, OrganizationRequestPolicy::class);
         Gate::policy(EventModel::class, EventPolicy::class);
+        Gate::policy(EventCustomField::class, CustomFieldPolicy::class);
         Gate::policy(EventDivision::class, DivisionPolicy::class);
         Gate::policy(EventRole::class, RolePolicy::class);
         Gate::policy(EventShift::class, ShiftPolicy::class);
@@ -125,6 +128,15 @@ class AppServiceProvider extends ServiceProvider
             $eventId = $event instanceof EventModel ? $event->getKey() : null;
 
             return EventShift::whereKey($value)
+                ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
+                ->firstOrFail();
+        });
+
+        Route::bind('field', function (string $value): EventCustomField {
+            $event = request()->route()?->parameter('event');
+            $eventId = $event instanceof EventModel ? $event->getKey() : null;
+
+            return EventCustomField::whereKey($value)
                 ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
                 ->firstOrFail();
         });
