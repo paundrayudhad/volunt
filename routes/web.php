@@ -22,6 +22,7 @@ use App\Http\Controllers\PublicEventController;
 use App\Http\Controllers\Volunteer\AnnouncementController as VolunteerAnnouncementController;
 use App\Http\Controllers\Volunteer\AttendanceController as VolunteerAttendanceController;
 use App\Http\Controllers\Volunteer\NotificationController as VolunteerNotificationController;
+use App\Http\Controllers\Volunteer\ScheduleController as VolunteerScheduleController;
 use App\Http\Controllers\VolunteerProfileController;
 use App\Http\Controllers\VolunteerRegistrationController;
 use Illuminate\Support\Facades\Route;
@@ -76,6 +77,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('my/assignments/{assignmentVol}/qr/rotate', [VolunteerAttendanceController::class, 'rotate'])
         ->middleware('throttle:10,1')
         ->name('my.qr.rotate');
+    Route::get('my/schedule', [VolunteerScheduleController::class, 'index'])
+        ->name('my.schedule');
 
     Route::get('profile/volunteer', [VolunteerProfileController::class, 'edit'])
         ->name('profile.volunteer.edit');
