@@ -25,6 +25,7 @@ class EventShiftFactory extends Factory
             'start_at' => $start,
             'end_at' => (clone $start)->modify('+4 hours'),
             'status' => 'active',
+            'filled_count' => 0,
         ];
     }
 }
