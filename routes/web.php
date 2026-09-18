@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationContro
 use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizationRequestController;
 use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
 use App\Http\Controllers\OrganizationRequestController;
+use App\Http\Controllers\Organizer\AnnouncementController as OrganizerAnnouncementController;
 use App\Http\Controllers\Organizer\AssignmentController as OrganizerAssignmentController;
 use App\Http\Controllers\Organizer\AttendanceController as OrganizerAttendanceController;
 use App\Http\Controllers\Organizer\CustomFieldController;
@@ -18,7 +19,9 @@ use App\Http\Controllers\Organizer\RegistrationController as OrganizerRegistrati
 use App\Http\Controllers\Organizer\RoleController;
 use App\Http\Controllers\Organizer\ShiftController;
 use App\Http\Controllers\PublicEventController;
+use App\Http\Controllers\Volunteer\AnnouncementController as VolunteerAnnouncementController;
 use App\Http\Controllers\Volunteer\AttendanceController as VolunteerAttendanceController;
+use App\Http\Controllers\Volunteer\NotificationController as VolunteerNotificationController;
 use App\Http\Controllers\VolunteerProfileController;
 use App\Http\Controllers\VolunteerRegistrationController;
 use Illuminate\Support\Facades\Route;
@@ -78,6 +81,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('profile.volunteer.edit');
     Route::patch('profile/volunteer', [VolunteerProfileController::class, 'update'])
         ->name('profile.volunteer.update');
+
+    Route::get('announcements', [VolunteerAnnouncementController::class, 'index'])
+        ->name('announcements.index');
+    Route::get('notifications', [VolunteerNotificationController::class, 'index'])
+        ->name('notifications.index');
+    Route::post('notifications/{id}/read', [VolunteerNotificationController::class, 'read'])
+        ->name('notifications.read');
 
     Route::prefix('organizer/{organization}')->name('organizer.')->group(function () {
         Route::get('/', [OrganizationController::class, 'show'])->name('show');
@@ -192,6 +202,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
                     Route::post('manual', [OrganizerAttendanceController::class, 'manual'])
                         ->middleware('throttle:30,1')
                         ->name('manual');
+                });
+
+                Route::prefix('announcements')->name('announcements.')->group(function () {
+                    Route::get('/', [OrganizerAnnouncementController::class, 'index'])->name('index');
+                    Route::get('create', [OrganizerAnnouncementController::class, 'create'])->name('create');
+                    Route::post('/', [OrganizerAnnouncementController::class, 'store'])
+                        ->middleware('throttle:10,1')
+                        ->name('store');
+                    Route::prefix('{announcement}')->group(function () {
+                        Route::get('/', [OrganizerAnnouncementController::class, 'show'])->name('show');
+                        Route::post('publish', [OrganizerAnnouncementController::class, 'publish'])
+                            ->middleware('throttle:10,1')
+                            ->name('publish');
+                    });
                 });
             });
         });

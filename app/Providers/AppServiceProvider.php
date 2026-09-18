@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Announcement;
 use App\Models\Assignment;
 use App\Models\Event as EventModel;
 use App\Models\EventCustomField;
@@ -14,6 +15,7 @@ use App\Models\OrganizationMember;
 use App\Models\OrganizationRequest;
 use App\Models\Registration;
 use App\Models\User;
+use App\Policies\AnnouncementPolicy;
 use App\Policies\AssignmentPolicy;
 use App\Policies\CustomFieldPolicy;
 use App\Policies\DivisionPolicy;
@@ -78,6 +80,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(EventRole::class, RolePolicy::class);
         Gate::policy(EventShift::class, ShiftPolicy::class);
         Gate::policy(Assignment::class, AssignmentPolicy::class);
+        Gate::policy(Announcement::class, AnnouncementPolicy::class);
         Gate::policy(Registration::class, RegistrationPolicy::class);
 
         Route::bind('organization', fn (string $value) => Organization::where('slug', $value)
@@ -124,6 +127,15 @@ class AppServiceProvider extends ServiceProvider
             $eventId = $event instanceof EventModel ? $event->getKey() : null;
 
             return Assignment::whereKey($value)
+                ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
+                ->firstOrFail();
+        });
+
+        Route::bind('announcement', function (string $value): Announcement {
+            $event = request()->route()?->parameter('event');
+            $eventId = $event instanceof EventModel ? $event->getKey() : null;
+
+            return Announcement::whereKey($value)
                 ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
                 ->firstOrFail();
         });

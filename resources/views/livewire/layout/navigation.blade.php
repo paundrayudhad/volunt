@@ -33,6 +33,16 @@ new class extends Component
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('announcements.index')" :active="request()->routeIs('announcements.*')">
+                        {{ __('Pengumuman') }}
+                    </x-nav-link>
+                    <x-nav-link :href="route('notifications.index')" :active="request()->routeIs('notifications.*')">
+                        {{ __('Notifikasi') }}
+                        @php($belumBaca = auth()->user()?->unreadNotifications()->count() ?? 0)
+                        @if ($belumBaca > 0)
+                            ({{ $belumBaca }})
+                        @endif
+                    </x-nav-link>
                 </div>
             </div>
 
@@ -83,6 +93,16 @@ new class extends Component
         <div class="pt-2 pb-3 space-y-1">
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
                 {{ __('Dashboard') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('announcements.index')" :active="request()->routeIs('announcements.*')">
+                {{ __('Pengumuman') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('notifications.index')" :active="request()->routeIs('notifications.*')">
+                {{ __('Notifikasi') }}
+                @php($belumBacaSeluler = auth()->user()?->unreadNotifications()->count() ?? 0)
+                @if ($belumBacaSeluler > 0)
+                    ({{ $belumBacaSeluler }})
+                @endif
             </x-responsive-nav-link>
         </div>
 
