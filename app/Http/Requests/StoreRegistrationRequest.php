@@ -84,7 +84,14 @@ class StoreRegistrationRequest extends FormRequest
         if (! $value instanceof UploadedFile) {
             return;
         }
-        $realMime = (string) finfo_file($value->getRealPath(), FILEINFO_MIME_TYPE);
+        $realPath = $value->getRealPath();
+        if ($realPath === false) {
+            $fail('File yang diunggah tidak valid.');
+
+            return;
+        }
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $realMime = (string) $finfo->file($realPath);
         $expected = [
             'pdf' => 'application/pdf',
             'jpg' => 'image/jpeg',

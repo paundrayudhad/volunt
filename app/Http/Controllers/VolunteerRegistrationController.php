@@ -8,6 +8,7 @@ use App\Models\EventRole;
 use App\Models\Registration;
 use App\Services\RegistrationService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -83,14 +84,14 @@ class VolunteerRegistrationController extends Controller
 
         foreach ($fields as $field) {
             $key = (string) $field->id;
-            if (! array_key_exists($key, $answers) && ! array_key_exists($field->id, $answers)) {
+            if (! array_key_exists($key, $answers)) {
                 continue;
             }
-            $value = $answers[$key] ?? $answers[$field->id];
+            $value = $answers[$key];
             if ($value === null || $value === '') {
                 continue;
             }
-            if ($value instanceof \Illuminate\Http\UploadedFile) {
+            if ($value instanceof UploadedFile) {
                 $path = Storage::putFileAs(
                     'registration-answers',
                     $value,
