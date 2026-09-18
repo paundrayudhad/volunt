@@ -44,6 +44,13 @@ class AttendanceService
 
             $replay = Attendance::where('idempotency_key', $kunci)->first();
             if ($replay instanceof Attendance) {
+                abort_unless(
+                    (int) $replay->assignment_id === (int) $assignment->id
+                        && (int) $replay->shift_id === (int) $shift->id,
+                    404,
+                    'Token tidak termasuk event ini.'
+                );
+
                 return $replay;
             }
 
@@ -135,10 +142,17 @@ class AttendanceService
 
             $replay = Attendance::where('idempotency_key', $kunci)->first();
             if ($replay instanceof Attendance) {
+                abort_unless(
+                    (int) $replay->assignment_id === (int) $assignment->id
+                        && (int) $replay->shift_id === (int) $shift->id,
+                    404,
+                    'Token tidak termasuk event ini.'
+                );
+
                 return $replay;
             }
 
-            abort_unless(trim($alasan) !== '', 422, 'Alasan pencatatan manual wajib diisi.');
+            abort_unless(mb_strlen(trim($alasan)) >= 10, 422, 'Alasan pencatatan manual minimal 10 karakter.');
             $this->pastikanJendela($shift);
 
             abort_unless($assignment->isActive(), 422, 'Assignment tidak aktif.');

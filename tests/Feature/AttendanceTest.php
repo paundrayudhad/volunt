@@ -18,6 +18,7 @@ use App\Services\MembershipService;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 beforeEach(function () {
     $this->seed(PermissionSeeder::class);
@@ -325,4 +326,91 @@ it('hadirTesRotateMencabutLama', function (): void {
         ->postJson(route('organizer.events.attendances.process', [$setup['org']->slug, $setup['event']->slug]), hadirTesPindai($lama))
         ->assertUnprocessable()
         ->assertJsonPath('message', 'Token sudah dicabut.');
+});
+
+/** @return array{setupA: array<string, mixed>, setupB: array<string, mixed>} */
+function hadirTesDuaAssignmentSatuEvent(): array
+{
+    $setupA = hadirTesSetup();
+    $setupB = hadirTesSetup();
+
+    $pendaftaranB = Registration::factory()->create([
+        'event_id' => $setupA['event']->id,
+        'role_id' => $setupA['role']->id,
+        'status' => 'accepted',
+    ]);
+    $assignmentB = app(AssignmentService::class)->assign(
+        $pendaftaranB->refresh(),
+        $setupA['shift']->refresh(),
+        $setupA['owner']->refresh()
+    );
+
+    $setupB['assignment'] = $assignmentB->refresh();
+    $setupB['registration'] = $pendaftaranB->refresh();
+
+    return ['setupA' => $setupA, 'setupB' => $setupB];
+}
+
+it('hadirTesReplayLintasScopeCheckIn404', function (): void {
+    ['setupA' => $setupA, 'setupB' => $setupB] = hadirTesDuaAssignmentSatuEvent();
+    $this->travelTo((clone $setupA['shift']->start_at)->addMinutes(5));
+    $kunci = (string) Str::uuid();
+
+    app(AttendanceService::class)->checkIn(
+        app(AttendanceService::class)->issueToken($setupA['assignment'], $setupA['owner'])['raw'],
+        $setupA['owner'],
+        $kunci,
+        (int) $setupA['event']->id
+    );
+
+    $mentahB = app(AttendanceService::class)->issueToken($setupB['assignment'], $setupA['owner'])['raw'];
+
+    $this->actingAs($setupA['owner'])
+        ->postJson(route('organizer.events.attendances.process', [$setupA['org']->slug, $setupA['event']->slug]), [
+            'token' => $mentahB,
+            'action' => 'check_in',
+            'idempotency_key' => $kunci,
+        ])
+        ->assertNotFound()
+        ->assertJsonPath('message', 'Token tidak termasuk event ini.');
+});
+
+it('hadirTesReplayLintasScopeManual404', function (): void {
+    ['setupA' => $setupA, 'setupB' => $setupB] = hadirTesDuaAssignmentSatuEvent();
+    $this->travelTo((clone $setupA['shift']->start_at)->addMinutes(5));
+    $kunci = (string) Str::uuid();
+
+    app(AttendanceService::class)->manual(
+        $setupA['assignment']->refresh(),
+        $setupA['owner'],
+        'Pemindai rusak, dicatat manual oleh koordinator.',
+        $kunci
+    );
+
+    $this->actingAs($setupA['owner'])
+        ->postJson(route('organizer.events.attendances.manual', [$setupA['org']->slug, $setupA['event']->slug]), [
+            'assignment_id' => $setupB['assignment']->id,
+            'reason' => 'Pemindai rusak, dicatat manual oleh koordinator.',
+            'idempotency_key' => $kunci,
+        ])
+        ->assertNotFound()
+        ->assertJsonPath('message', 'Token tidak termasuk event ini.');
+});
+
+it('hadirTesManualAlasanSembilanKarakter422', function (): void {
+    $setup = hadirTesSetup();
+    $this->travelTo((clone $setup['shift']->start_at)->addMinutes(5));
+
+    try {
+        app(AttendanceService::class)->manual(
+            $setup['assignment']->refresh(),
+            $setup['owner'],
+            '123456789',
+            (string) Str::uuid()
+        );
+        $this->fail('Alasan 9 karakter seharusnya ditolak service.');
+    } catch (HttpException $e) {
+        expect($e->getStatusCode())->toBe(422)
+            ->and($e->getMessage())->toBe('Alasan pencatatan manual minimal 10 karakter.');
+    }
 });
