@@ -35,6 +35,12 @@ class MembershipService
         'shift.manage',
         'registration.read',
         'registration.review',
+        'assignment.manage',
+        'assignment.read',
+        'attendance.record',
+        'attendance.read',
+        'announcement.publish',
+        'announcement.read',
     ];
 
     public const OWNER_PERMS = self::GRANULAR;

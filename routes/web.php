@@ -6,6 +6,9 @@ use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationContro
 use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizationRequestController;
 use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
 use App\Http\Controllers\OrganizationRequestController;
+use App\Http\Controllers\Organizer\AnnouncementController as OrganizerAnnouncementController;
+use App\Http\Controllers\Organizer\AssignmentController as OrganizerAssignmentController;
+use App\Http\Controllers\Organizer\AttendanceController as OrganizerAttendanceController;
 use App\Http\Controllers\Organizer\CustomFieldController;
 use App\Http\Controllers\Organizer\DivisionController;
 use App\Http\Controllers\Organizer\EventController;
@@ -16,6 +19,10 @@ use App\Http\Controllers\Organizer\RegistrationController as OrganizerRegistrati
 use App\Http\Controllers\Organizer\RoleController;
 use App\Http\Controllers\Organizer\ShiftController;
 use App\Http\Controllers\PublicEventController;
+use App\Http\Controllers\Volunteer\AnnouncementController as VolunteerAnnouncementController;
+use App\Http\Controllers\Volunteer\AttendanceController as VolunteerAttendanceController;
+use App\Http\Controllers\Volunteer\NotificationController as VolunteerNotificationController;
+use App\Http\Controllers\Volunteer\ScheduleController as VolunteerScheduleController;
 use App\Http\Controllers\VolunteerProfileController;
 use App\Http\Controllers\VolunteerRegistrationController;
 use Illuminate\Support\Facades\Route;
@@ -65,10 +72,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('registrations/{registrationVol}/withdraw', [VolunteerRegistrationController::class, 'withdraw'])
         ->name('registrations.withdraw');
 
+    Route::get('my/assignments/{assignmentVol}/qr', [VolunteerAttendanceController::class, 'show'])
+        ->name('my.qr.show');
+    Route::post('my/assignments/{assignmentVol}/qr/rotate', [VolunteerAttendanceController::class, 'rotate'])
+        ->middleware('throttle:10,1')
+        ->name('my.qr.rotate');
+    Route::get('my/schedule', [VolunteerScheduleController::class, 'index'])
+        ->name('my.schedule');
+
     Route::get('profile/volunteer', [VolunteerProfileController::class, 'edit'])
         ->name('profile.volunteer.edit');
     Route::patch('profile/volunteer', [VolunteerProfileController::class, 'update'])
         ->name('profile.volunteer.update');
+
+    Route::get('announcements', [VolunteerAnnouncementController::class, 'index'])
+        ->name('announcements.index');
+    Route::get('notifications', [VolunteerNotificationController::class, 'index'])
+        ->name('notifications.index');
+    Route::post('notifications/{id}/read', [VolunteerNotificationController::class, 'read'])
+        ->name('notifications.read');
 
     Route::prefix('organizer/{organization}')->name('organizer.')->group(function () {
         Route::get('/', [OrganizationController::class, 'show'])->name('show');
@@ -155,6 +177,47 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         Route::post('review', [OrganizerRegistrationController::class, 'review'])
                             ->middleware('password.confirm')
                             ->name('review');
+                    });
+                });
+
+                Route::prefix('assignments')->name('assignments.')->group(function () {
+                    Route::get('/', [OrganizerAssignmentController::class, 'index'])->name('index');
+                    Route::post('assign', [OrganizerAssignmentController::class, 'assign'])
+                        ->middleware(['password.confirm', 'throttle:10,1'])
+                        ->name('assign');
+                    Route::post('bulk', [OrganizerAssignmentController::class, 'bulkAssign'])
+                        ->middleware(['password.confirm', 'throttle:10,1'])
+                        ->name('bulk');
+                    Route::prefix('{assignment}')->group(function () {
+                        Route::get('/', [OrganizerAssignmentController::class, 'show'])->name('show');
+                        Route::post('reassign', [OrganizerAssignmentController::class, 'reassign'])->name('reassign');
+                        Route::post('confirm', [OrganizerAssignmentController::class, 'confirm'])->name('confirm');
+                        Route::post('cancel', [OrganizerAssignmentController::class, 'cancel'])->name('cancel');
+                    });
+                });
+
+                Route::prefix('attendances')->name('attendances.')->group(function () {
+                    Route::get('/', [OrganizerAttendanceController::class, 'index'])->name('index');
+                    Route::get('scan', [OrganizerAttendanceController::class, 'scan'])->name('scan');
+                    Route::post('scan', [OrganizerAttendanceController::class, 'process'])
+                        ->middleware('throttle:30,1')
+                        ->name('process');
+                    Route::post('manual', [OrganizerAttendanceController::class, 'manual'])
+                        ->middleware('throttle:30,1')
+                        ->name('manual');
+                });
+
+                Route::prefix('announcements')->name('announcements.')->group(function () {
+                    Route::get('/', [OrganizerAnnouncementController::class, 'index'])->name('index');
+                    Route::get('create', [OrganizerAnnouncementController::class, 'create'])->name('create');
+                    Route::post('/', [OrganizerAnnouncementController::class, 'store'])
+                        ->middleware('throttle:10,1')
+                        ->name('store');
+                    Route::prefix('{announcement}')->group(function () {
+                        Route::get('/', [OrganizerAnnouncementController::class, 'show'])->name('show');
+                        Route::post('publish', [OrganizerAnnouncementController::class, 'publish'])
+                            ->middleware('throttle:10,1')
+                            ->name('publish');
                     });
                 });
             });

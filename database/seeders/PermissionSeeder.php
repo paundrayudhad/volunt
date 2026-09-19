@@ -32,6 +32,12 @@ class PermissionSeeder extends Seeder
         'shift.manage',
         'registration.read',
         'registration.review',
+        'assignment.manage',
+        'assignment.read',
+        'attendance.record',
+        'attendance.read',
+        'announcement.publish',
+        'announcement.read',
     ];
 
     public function run(): void
