@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CertificateVerification extends Model
 {
+    public $timestamps = false;
+
     protected $fillable = [];
 
     /** @var array<string, string> */

@@ -143,6 +143,10 @@ class AppServiceProvider extends ServiceProvider
                 ->firstOrFail();
         });
 
+        Route::bind('certificateVol', fn (string $value): Certificate => Certificate::whereKey($value)
+            ->where('user_id', auth()->id())
+            ->firstOrFail());
+
         Route::bind('certificate', function (string $value): Certificate {
             $event = request()->route()?->parameter('event');
             $eventId = $event instanceof EventModel ? $event->getKey() : null;

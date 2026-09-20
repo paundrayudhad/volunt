@@ -19,14 +19,20 @@ use App\Http\Controllers\Organizer\OrganizationController;
 use App\Http\Controllers\Organizer\RegistrationController as OrganizerRegistrationController;
 use App\Http\Controllers\Organizer\RoleController;
 use App\Http\Controllers\Organizer\ShiftController;
+use App\Http\Controllers\PublicCertificateController;
 use App\Http\Controllers\PublicEventController;
 use App\Http\Controllers\Volunteer\AnnouncementController as VolunteerAnnouncementController;
 use App\Http\Controllers\Volunteer\AttendanceController as VolunteerAttendanceController;
+use App\Http\Controllers\Volunteer\CertificateController as VolunteerCertificateController;
 use App\Http\Controllers\Volunteer\NotificationController as VolunteerNotificationController;
 use App\Http\Controllers\Volunteer\ScheduleController as VolunteerScheduleController;
 use App\Http\Controllers\VolunteerProfileController;
 use App\Http\Controllers\VolunteerRegistrationController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('verify/certificate/{nomor}', [PublicCertificateController::class, 'show'])
+    ->middleware('throttle:60,1')
+    ->name('certificates.verify');
 
 Route::view('/', 'welcome');
 
@@ -92,6 +98,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('notifications.index');
     Route::post('notifications/{id}/read', [VolunteerNotificationController::class, 'read'])
         ->name('notifications.read');
+    Route::get('my/certificates', [VolunteerCertificateController::class, 'index'])
+        ->name('my.certificates.index');
+    Route::get('my/certificates/{certificateVol}/download', [VolunteerCertificateController::class, 'download'])
+        ->name('my.certificates.download');
 
     Route::prefix('organizer/{organization}')->name('organizer.')->group(function () {
         Route::get('/', [OrganizationController::class, 'show'])->name('show');
