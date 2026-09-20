@@ -34,7 +34,6 @@ class CertificateController extends Controller
             'event' => $event,
             'certificates' => $items,
             'diterbitkan' => Certificate::where('event_id', $event->id)->count(),
-            'dilewati' => 0,
             'ambang' => $this->sertifikat->effectiveThreshold($event),
         ]);
     }

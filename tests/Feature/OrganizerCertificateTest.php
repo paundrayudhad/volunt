@@ -208,6 +208,26 @@ it('sertTesStafReadOnly403Mutasi', function (): void {
         ->and(Certificate::where('event_id', $event->id)->count())->toBe(1);
 });
 
+it('sertTesRevokeSuksesViaHttp', function (): void {
+    $s = sertWebSetup();
+    $event = sertWebSelesaikanEvent($s);
+    $relawan = User::factory()->create();
+    $tugas = sertWebTugaskan($s, sertWebRegistrasi($s, $relawan), sertWebShift($s, now()->subDays(4), now()->subDays(3)));
+    sertWebHadir($tugas);
+    $sertifikat = app(CertificateService::class)->issueBatch($event->refresh(), $s['owner'])['issued'][0];
+    $alasan = 'Data kehadiran tidak valid setelah verifikasi ulang.';
+
+    $this->actingAs($s['owner'])->withSession(sertWebKonfirmasi())
+        ->post(route('organizer.events.certificates.revoke', sertWebParam($s, $sertifikat)), [
+            'reason' => $alasan,
+        ])
+        ->assertRedirect(route('organizer.events.certificates.show', sertWebParam($s, $sertifikat)))
+        ->assertSessionHas('status', "Sertifikat {$sertifikat->certificate_no} dicabut.");
+
+    expect($sertifikat->refresh()->isRevoked())->toBeTrue()
+        ->and($sertifikat->refresh()->revoke_reason)->toBe($alasan);
+});
+
 it('sertTesLintasEvent404', function (): void {
     $sA = sertWebSetup();
     $sB = sertWebSetup();
