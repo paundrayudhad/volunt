@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\LogController as AdminLogController;
 use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationController;
 use App\Http\Controllers\Admin\OrganizationRequestController as AdminOrganizationRequestController;
 use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
+use App\Http\Controllers\LostFoundPhotoController;
 use App\Http\Controllers\OrganizationRequestController;
 use App\Http\Controllers\Organizer\AnnouncementController as OrganizerAnnouncementController;
 use App\Http\Controllers\Organizer\AssignmentController as OrganizerAssignmentController;
@@ -26,6 +27,8 @@ use App\Http\Controllers\PublicEventController;
 use App\Http\Controllers\Volunteer\AnnouncementController as VolunteerAnnouncementController;
 use App\Http\Controllers\Volunteer\AttendanceController as VolunteerAttendanceController;
 use App\Http\Controllers\Volunteer\CertificateController as VolunteerCertificateController;
+use App\Http\Controllers\Volunteer\IncidentController as VolunteerIncidentController;
+use App\Http\Controllers\Volunteer\LostFoundController as VolunteerLostFoundController;
 use App\Http\Controllers\Volunteer\NotificationController as VolunteerNotificationController;
 use App\Http\Controllers\Volunteer\ScheduleController as VolunteerScheduleController;
 use App\Http\Controllers\VolunteerProfileController;
@@ -104,6 +107,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('my.certificates.index');
     Route::get('my/certificates/{certificateVol}/download', [VolunteerCertificateController::class, 'download'])
         ->name('my.certificates.download');
+    Route::get('my/incidents', [VolunteerIncidentController::class, 'index'])
+        ->name('my.incidents.index');
+    Route::post('my/incidents', [VolunteerIncidentController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->name('my.incidents.store');
+    Route::get('my/lost-found', [VolunteerLostFoundController::class, 'index'])
+        ->name('my.lost_found.index');
+    Route::post('my/lost-found', [VolunteerLostFoundController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->name('my.lost_found.store');
+    Route::post('my/lost-found/{lostFoundItem}/claim', [VolunteerLostFoundController::class, 'claim'])
+        ->middleware('throttle:30,1')
+        ->name('my.lost_found.claim');
+    Route::get('lost-found-photos/{lostFoundItem}', [LostFoundPhotoController::class, 'show'])
+        ->middleware(['auth', 'signed'])
+        ->name('lostfound.photo');
 
     Route::prefix('organizer/{organization}')->name('organizer.')->group(function () {
         Route::get('/', [OrganizationController::class, 'show'])->name('show');
