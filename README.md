@@ -33,6 +33,7 @@ Tanpa React/Vue SPA. Server-rendered agar hemat resource VPS.
 ## Status
 
 **Phase 4 — Selesai.** Assignment + schedule + QR attendance + announcement + notifikasi + suite hijau.
+**Phase 5A — Selesai.** Certificate + otorisasi + isolasi + konkurensi + suite hijau.
 Lihat [PRD.md](PRD.md) dan peta dokumen di bawah.
 
 ## Quickstart Dev (rencana, setelah scaffold Phase 0)
