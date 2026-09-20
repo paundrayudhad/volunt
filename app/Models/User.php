@@ -65,6 +65,18 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Certificate::class);
     }
 
+    /** @return HasMany<Incident, $this> */
+    public function reportedIncidents(): HasMany
+    {
+        return $this->hasMany(Incident::class, 'reporter_id');
+    }
+
+    /** @return HasMany<LostFoundItem, $this> */
+    public function reportedLostFoundItems(): HasMany
+    {
+        return $this->hasMany(LostFoundItem::class, 'reporter_id');
+    }
+
     /** @return HasMany<OrganizationMember, $this> */
     public function members(): HasMany
     {

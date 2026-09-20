@@ -44,6 +44,9 @@ class MembershipService
         'certificate.issue',
         'certificate.revoke',
         'certificate.read',
+        'incident.manage',
+        'incident.report',
+        'lostfound.manage',
     ];
 
     public const OWNER_PERMS = self::GRANULAR;

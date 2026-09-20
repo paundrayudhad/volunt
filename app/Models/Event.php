@@ -103,6 +103,18 @@ class Event extends Model
         return $this->hasMany(Certificate::class);
     }
 
+    /** @return HasMany<Incident, $this> */
+    public function incidents(): HasMany
+    {
+        return $this->hasMany(Incident::class);
+    }
+
+    /** @return HasMany<LostFoundItem, $this> */
+    public function lostFoundItems(): HasMany
+    {
+        return $this->hasMany(LostFoundItem::class);
+    }
+
     /** @return HasMany<EventCustomField, $this> */
     public function customFields(): HasMany
     {

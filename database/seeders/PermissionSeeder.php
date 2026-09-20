@@ -41,6 +41,9 @@ class PermissionSeeder extends Seeder
         'certificate.issue',
         'certificate.revoke',
         'certificate.read',
+        'incident.manage',
+        'incident.report',
+        'lostfound.manage',
     ];
 
     public function run(): void
