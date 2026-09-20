@@ -68,7 +68,7 @@ Mengikuti SECURITY.md §9 (aturan upload proyek):
 TDD per task (helper prefix per file, pola Phase 1–5A):
 
 - **Rantai status**: open→assigned→in_progress→resolved→closed tiap langkah OK; lompat langkah → 422; mundur tanpa reopen → 422; reopen dari resolved/closed → open + history; reopen dari open → 422; tiap transisi → 1 baris history append-only + audit.
-- **Klaim**: klaim item `found` → `claimed` + claimant/claimed_at + audit; klaim ganda → 422; klaim milik sendiri → 422; setuju → `returned`; tolak → `found` + claimant terhapus; resolve saat bukan `claimed` → 422; non-handler → 403.
+- **Klaim**: klaim item `found` → `claimed` + claimant/claimed_at + audit; klaim item bukan-`found` (termasuk klaim ganda) → 404 'Barang tidak tersedia untuk diklaim.' (IDOR: resource tak tersedia bagi peminta); klaim milik sendiri → 422; setuju → `returned`; tolak → `found` + claimant terhapus; resolve saat bukan `claimed` → 422; non-handler → 403.
 - **Penghubung**: insiden kategori lost_found + item tertaut → show dua arah; hapus item → insiden tetap ada (link null); hapus insiden → item tetap ada.
 - **Foto**: non-image → 422; >5MB → 422; svg → 422; signed URL kedaluwarsa/diutak-atik → 403; lintas org → 404; upload baru hapus file lama; record tanpa foto → 404.
 - **Otorisasi** (gaya OperationsAuthorizationTest): staff read-only 403 semua mutasi; lintas org/event 404; guest → login; volunteer lapor OK tapi assign/transition/close → 403.
