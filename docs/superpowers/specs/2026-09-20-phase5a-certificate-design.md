@@ -4,7 +4,7 @@
 **Scope:** penerbitan sertifikat volunteer pasca-event: eligibility ambang kehadiran per event, batch terbitkan organizer, PDF unduhan own-only, verifikasi publik minimal, revoke, penutupan assignment → `completed`. (PRD §9.5, §11 Phase 5; DATABASE.md §Kredensial & Logging; SECURITY.md §5; TESTING.md §2–§8)
 **Non-scope:** artist liaison (5C), incident + lost & found (5B), talent pool (5D), export/analytics/dashboard (Phase 6); template visual kustom per event; kirim sertifikat via email/WA (non-goal PRD); tanda tangan digital/QR-crypto; analitik unduhan.
 
-Keputusan kunci (hasil klarifikasi 2026-09-20): Phase 5 dipecah 5A–5D (5D terakhir karena butuh history lintas event); eligibility = ambang% kehadiran per event (kolom `events.certificate_min_attendance_pct`, default 50) + lantai minimal 1 kehadiran, penyebut = assignment aktif dengan shift tidak di-soft-delete; penerbitan = batch manual organizer (idempoten, re-run aman); assignment aktif yang shift-nya lewat ditutup → `completed` saat batch (via `AssignmentService::complete()` baru — menutup utang non-scope Phase 4); artefak = PDF via dompdf, generate-on-download; verifikasi publik data minimal.
+Keputusan kunci (hasil klarifikasi 2026-09-20): Phase 5 dipecah 5A–5D (5D terakhir karena butuh history lintas event); eligibility = ambang% kehadiran per event (kolom `events.certificate_min_attendance_pct`, default 50) + lantai minimal 1 kehadiran, penyebut = assignment aktif dengan shift yang masih ada (EventShift tanpa SoftDeletes: penghapusan shift merambat via FK cascade + guard `whereHas('shift')` sebagai kontrak); penerbitan = batch manual organizer (idempoten, re-run aman; kandidat anomali dilewati per-baris tanpa menggugurkan batch); assignment aktif yang shift-nya lewat ditutup → `completed` saat batch (via `AssignmentService::complete()` baru — menutup utang non-scope Phase 4); artefak = PDF via dompdf, generate-on-download; verifikasi publik data minimal via `certificate_no`.
 
 ## 1. Arsitektur & Komponen
 
@@ -14,7 +14,7 @@ Alur lapisan (sama seperti Phase 1–4): Controller tipis → Form Request (`aut
 
 | Service / Job | Tanggung jawab |
 |---|---|
-| `CertificateService` | Satu-satunya penulis sertifikat: `isEligible()`, `issueBatch()`, `issueIndividual()`, `revoke()`. Eligibility: event `completed`/`archived` + ≥1 attendance `present`/`late` + `hadir/penyebut ≥ ambang`. Penyebut = assignment AKTIF (`Assignment::ACTIVE`) dengan shift tidak di-soft-delete. Satu transaction + lock event |
+| `CertificateService` | Satu-satunya penulis sertifikat: `isEligible()`, `issueBatch()`, `issueIndividual()`, `revoke()`. Eligibility: event `completed`/`archived` + ≥1 attendance `present`/`late` + `hadir/penyebut ≥ ambang`. Penyebut = assignment AKTIF (`Assignment::ACTIVE`) dengan shift yang masih ada. Satu transaction + lock event |
 | `AssignmentService::complete()` (baru) | Menutup assignment aktif → `completed` (edge `assigned/reassigned/confirmed → completed` yang selama ini dideklarasikan di TRANSITIONS tapi tak terkendarai). Hanya assignment yang shift-nya sudah lewat. History append-only + audit |
 | Job batch besar (bila penerima ≥50) | Pola broadcast Phase 4: HTTP kembali langsung, penerbitan via queue. Di bawah 50 → sinkron dalam request |
 
@@ -42,12 +42,12 @@ Aturan nomor: `certificate_no` dibuat acak (`WV-{tahun}-{6 alnum}`); collision �
 
 Route groups (pola Phase 1–4):
 
-- **Organizer** `/organizer/{organization}/events/{event}/certificates` — index (filter valid/dicabut, paginasi) + show (termasuk riwayat verifikasi read-only) + `POST .../issue` (batch; opsional field `min_attendance_pct` di form yang sama) + `POST .../{certificate}/revoke` (alasan wajib min 10 karakter). Binding scoped rangkap tiga (org→event→certificate); luar scope → 404. Policy: member + `certificate.issue` / `certificate.revoke`.
+- **Organizer** `/organizer/{organization}/events/{event}/certificates` — index (paginasi; counter "diterbitkan" = non-revoked) + show (termasuk riwayat verifikasi read-only) + `POST .../issue` (batch; opsional field `min_attendance_pct` di form yang sama) + `POST .../{certificate}/revoke` (alasan wajib min 10 karakter). Filter index valid/dicabut: DEFERRED ke Phase 6/5D. Binding scoped rangkap tiga (org→event→certificate); luar scope → 404. Policy: member + `certificate.issue` / `certificate.revoke`.
 - **Volunteer** (auth + verified, own-only, luar milik → 404): `GET /my/certificates` (daftar + status, paginasi), `GET /my/certificates/{id}/download` (stream PDF; sertifikat dicabut → 422 'Sertifikat ini telah dicabut.').
 - **Publik** (tanpa auth): `GET /verify/certificate/{token}` — nomor + nama volunteer + nama event + tanggal terbit + VALID/DICABUT; token tak dikenal → 404; `noindex` meta.
-- **Admin** — daftar sertifikat lintas org, read-only (pola Phase 2–4: param global by-id, tanpa mutasi).
+- **Admin** — daftar sertifikat lintas org, read-only (pola Phase 2–4: param global by-id, tanpa mutasi). DEFERRED ke Phase 6/5D.
 
-Alur batch (`issueBatch`): lock event → baca ambang efektif → tutup assignment aktif yang shift-nya lewat → `completed` (via `AssignmentService::complete`) → untuk tiap volunteer layak: lewati bila sudah punya sertifikat aktif (unique `(event_id, user_id)` sebagai jaring) → generate nomor + token + `issued_at` + audit. Re-run: hanya menerbitkan yang baru layak; nol duplikat, nol error. Sertifikat yang dicabut tidak diterbitkan ulang batch (riwayat pencabutan dihormati; koreksi salah-cabut via `issueIndividual` + audit).
+Alur batch (`issueBatch`): lock event → baca ambang efektif → tutup assignment aktif yang shift-nya lewat → `completed` (via `AssignmentService::complete`) → untuk tiap volunteer layak: lewati bila sudah punya sertifikat aktif (unique `(event_id, user_id)` sebagai jaring) → generate nomor + token + `issued_at` + audit. Kandidat anomali (tanpa registration accepted, user hilang, collision nomor) dilewati per-baris + dicatat di `failed` tanpa menggugurkan batch. Re-run: hanya menerbitkan yang baru layak; nol duplikat, nol error. Revoke bersifat FINAL: `issueIndividual` melempar 422 bila ADA baris apa pun untuk (event, user), aktif maupun dicabut — unique `(event_id, user_id)` melarang terbit-baru sebagai koreksi salah-cabut.
 
 Revoke: `revoked_at` + alasan + audit; **tidak** membuka kembali assignment (penutupan evaluasi final); verifikasi publik menampilkan DICABUT; unduhan → 422.
 
