@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\Announcement;
 use App\Models\Assignment;
+use App\Models\Certificate;
 use App\Models\Event as EventModel;
 use App\Models\EventCustomField;
 use App\Models\EventDivision;
@@ -17,6 +18,7 @@ use App\Models\Registration;
 use App\Models\User;
 use App\Policies\AnnouncementPolicy;
 use App\Policies\AssignmentPolicy;
+use App\Policies\CertificatePolicy;
 use App\Policies\CustomFieldPolicy;
 use App\Policies\DivisionPolicy;
 use App\Policies\EventPolicy;
@@ -81,6 +83,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(EventShift::class, ShiftPolicy::class);
         Gate::policy(Assignment::class, AssignmentPolicy::class);
         Gate::policy(Announcement::class, AnnouncementPolicy::class);
+        Gate::policy(Certificate::class, CertificatePolicy::class);
         Gate::policy(Registration::class, RegistrationPolicy::class);
 
         Route::bind('organization', fn (string $value) => Organization::where('slug', $value)
@@ -136,6 +139,15 @@ class AppServiceProvider extends ServiceProvider
             $eventId = $event instanceof EventModel ? $event->getKey() : null;
 
             return Announcement::whereKey($value)
+                ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
+                ->firstOrFail();
+        });
+
+        Route::bind('certificate', function (string $value): Certificate {
+            $event = request()->route()?->parameter('event');
+            $eventId = $event instanceof EventModel ? $event->getKey() : null;
+
+            return Certificate::whereKey($value)
                 ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
                 ->firstOrFail();
         });

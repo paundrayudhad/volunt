@@ -9,6 +9,7 @@ use App\Http\Controllers\OrganizationRequestController;
 use App\Http\Controllers\Organizer\AnnouncementController as OrganizerAnnouncementController;
 use App\Http\Controllers\Organizer\AssignmentController as OrganizerAssignmentController;
 use App\Http\Controllers\Organizer\AttendanceController as OrganizerAttendanceController;
+use App\Http\Controllers\Organizer\CertificateController as OrganizerCertificateController;
 use App\Http\Controllers\Organizer\CustomFieldController;
 use App\Http\Controllers\Organizer\DivisionController;
 use App\Http\Controllers\Organizer\EventController;
@@ -218,6 +219,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         Route::post('publish', [OrganizerAnnouncementController::class, 'publish'])
                             ->middleware('throttle:10,1')
                             ->name('publish');
+                    });
+                });
+
+                Route::prefix('certificates')->name('certificates.')->group(function () {
+                    Route::get('/', [OrganizerCertificateController::class, 'index'])->name('index');
+                    Route::post('issue', [OrganizerCertificateController::class, 'issue'])
+                        ->middleware(['password.confirm', 'throttle:10,1'])
+                        ->name('issue');
+                    Route::prefix('{certificate}')->group(function () {
+                        Route::get('/', [OrganizerCertificateController::class, 'show'])->name('show');
+                        Route::post('revoke', [OrganizerCertificateController::class, 'revoke'])
+                            ->middleware('password.confirm')
+                            ->name('revoke');
                     });
                 });
             });
