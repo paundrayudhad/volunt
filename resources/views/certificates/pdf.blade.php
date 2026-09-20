@@ -13,7 +13,7 @@
         .meta { margin-top: 18px; font-size: 12px; color: #4b5563; }
         .bawah { margin-top: 28px; width: 100%; }
         .kolom { display: inline-block; width: 46%; vertical-align: top; font-size: 12px; }
-        .qr { border-collapse: collapse; margin: 0 auto; }
+        .qr { border-collapse: collapse; margin: 0 auto; border: 12px solid #ffffff; }
         .qr td { width: 4px; height: 4px; padding: 0; }
         .qr td.hitam { background: #000000; }
         .qr td.putih { background: #ffffff; }
