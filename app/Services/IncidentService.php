@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Event;
 use App\Models\Incident;
 use App\Models\IncidentStatusHistory;
+use App\Models\LostFoundItem;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -18,8 +19,13 @@ class IncidentService
         abort_unless(in_array($data['category'], Incident::CATEGORIES, true), 422, 'Kategori insiden tidak dikenal.');
         $prioritas = $data['priority'] ?? 'medium';
         abort_unless(in_array($prioritas, Incident::PRIORITIES, true), 422, 'Prioritas insiden tidak dikenal.');
+        $tautanId = $data['lost_found_item_id'] ?? null;
 
-        return DB::transaction(function () use ($event, $pelapor, $data, $prioritas): Incident {
+        return DB::transaction(function () use ($event, $pelapor, $data, $prioritas, $tautanId): Incident {
+            if ($tautanId !== null) {
+                $tautan = LostFoundItem::whereKey($tautanId)->lockForUpdate()->first();
+                abort_unless($tautan !== null && (int) $tautan->event_id === (int) $event->id, 422, 'Item tertaut bukan milik event ini.');
+            }
             $insiden = Incident::unguarded(fn (): Incident => Incident::create([
                 'event_id' => $event->id,
                 'category' => $data['category'],
@@ -28,7 +34,7 @@ class IncidentService
                 'description' => $data['description'],
                 'reporter_id' => $pelapor->id,
                 'status' => 'open',
-                'lost_found_item_id' => $data['lost_found_item_id'] ?? null,
+                'lost_found_item_id' => $tautanId,
             ]));
             $this->audit->record($pelapor, 'incident.reported', Incident::class, $insiden->id, [
                 'event_id' => $event->id, 'new' => ['category' => $insiden->category, 'priority' => $insiden->priority],

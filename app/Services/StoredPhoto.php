@@ -26,6 +26,7 @@ class StoredPhoto
         abort_unless(in_array(mime_content_type($file->getRealPath()), self::ALLOWED, true), 422, 'Isi berkas bukan gambar yang didukung.');
         $nama = Str::uuid()->toString().'.'.$ekstensi;
         $path = trim($dir, '/').'/'.$nama;
+        Storage::disk('local')->makeDirectory(trim($dir, '/'));
         if (extension_loaded('gd')) {
             $img = @imagecreatefromstring((string) file_get_contents($file->getRealPath()));
             abort_unless($img !== false, 422, 'Berkas bukan gambar yang valid.');

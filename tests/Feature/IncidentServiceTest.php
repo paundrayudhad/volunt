@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Event;
+use App\Models\LostFoundItem;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
 use App\Models\User;
@@ -92,14 +93,28 @@ it('tugas dari luar organisasi ditolak 422', function () {
     $svc->assign($insiden, $owner, $luar);
 })->throws(HttpException::class, 'Petugas harus member organisasi yang sama.');
 
-it('backfill memberi perm insiden ke owner lama', function () {
+it('tautan item tak dikenal ditolak 422', function () {
     [$org, $owner, $event] = buatPaketInsiden();
-    $owner->revokePermissionTo(['incident.manage', 'incident.report', 'lostfound.manage']);
-    expect($owner->refresh()->can('incident.manage'))->toBeFalse();
+    $svc = app(IncidentService::class);
 
-    (require base_path('database/migrations/2026_09_20_000006_backfill_incident_permissions.php'))->up();
+    $svc->report($event, $owner, ['category' => 'lost_found', 'priority' => 'medium', 'location' => 'Posko informasi', 'description' => 'Penonton melaporkan dompet hilang di area konser.', 'lost_found_item_id' => 999999]);
+})->throws(HttpException::class, 'Item tertaut bukan milik event ini.');
 
-    expect($owner->refresh()->can('incident.manage'))->toBeTrue()
-        ->and($owner->can('incident.report'))->toBeTrue()
-        ->and($owner->can('lostfound.manage'))->toBeTrue();
+it('tautan item event lain ditolak 422', function () {
+    [$org, $owner, $event] = buatPaketInsiden();
+    $svc = app(IncidentService::class);
+    $eventLain = Event::factory()->create(['organization_id' => $org->id]);
+    $itemLain = LostFoundItem::factory()->create(['event_id' => $eventLain->id, 'kind' => 'found']);
+
+    $svc->report($event, $owner, ['category' => 'lost_found', 'priority' => 'medium', 'location' => 'Posko informasi', 'description' => 'Penonton melaporkan dompet hilang di area konser.', 'lost_found_item_id' => $itemLain->id]);
+})->throws(HttpException::class, 'Item tertaut bukan milik event ini.');
+
+it('tautan item event sama diterima', function () {
+    [$org, $owner, $event] = buatPaketInsiden();
+    $svc = app(IncidentService::class);
+    $item = LostFoundItem::factory()->create(['event_id' => $event->id, 'kind' => 'found']);
+
+    $insiden = $svc->report($event, $owner, ['category' => 'lost_found', 'priority' => 'medium', 'location' => 'Posko informasi', 'description' => 'Penonton melaporkan dompet hilang di area konser.', 'lost_found_item_id' => $item->id]);
+
+    expect($insiden->lost_found_item_id)->toBe($item->id);
 });

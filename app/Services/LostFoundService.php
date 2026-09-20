@@ -17,28 +17,32 @@ class LostFoundService
     {
         abort_unless(in_array($data['kind'], LostFoundItem::KINDS, true), 422, 'Jenis laporan tidak dikenal.');
         $status = $data['kind'] === 'lost' ? 'open' : 'found';
+        $foto = isset($data['photo']) ? StoredPhoto::fromUpload($data['photo'], 'lost-found') : null;
 
-        return DB::transaction(function () use ($event, $pelapor, $data, $status): LostFoundItem {
-            $foto = isset($data['photo'])
-                ? StoredPhoto::fromUpload($data['photo'], 'lost-found')
-                : null;
-            $item = LostFoundItem::unguarded(fn (): LostFoundItem => LostFoundItem::create([
-                'event_id' => $event->id,
-                'kind' => $data['kind'],
-                'item_name' => $data['item_name'],
-                'description' => $data['description'] ?? null,
-                'location' => $data['location'] ?? null,
-                'occurred_at' => $data['occurred_at'] ?? null,
-                'reporter_id' => $pelapor->id,
-                'status' => $status,
-                'photo_path' => $foto,
-            ]));
-            $this->audit->record($pelapor, 'lostfound.reported', LostFoundItem::class, $item->id, [
-                'event_id' => $event->id, 'new' => ['kind' => $item->kind, 'status' => $item->status],
-            ]);
+        try {
+            return DB::transaction(function () use ($event, $pelapor, $data, $status, $foto): LostFoundItem {
+                $item = LostFoundItem::unguarded(fn (): LostFoundItem => LostFoundItem::create([
+                    'event_id' => $event->id,
+                    'kind' => $data['kind'],
+                    'item_name' => $data['item_name'],
+                    'description' => $data['description'] ?? null,
+                    'location' => $data['location'] ?? null,
+                    'occurred_at' => $data['occurred_at'] ?? null,
+                    'reporter_id' => $pelapor->id,
+                    'status' => $status,
+                    'photo_path' => $foto,
+                ]));
+                $this->audit->record($pelapor, 'lostfound.reported', LostFoundItem::class, $item->id, [
+                    'event_id' => $event->id, 'new' => ['kind' => $item->kind, 'status' => $item->status],
+                ]);
 
-            return $item;
-        });
+                return $item;
+            });
+        } catch (\Throwable $e) {
+            StoredPhoto::delete($foto);
+
+            throw $e;
+        }
     }
 
     public function claim(LostFoundItem $item, User $pengklaim): LostFoundItem
@@ -48,12 +52,16 @@ class LostFoundService
         abort_unless((int) $item->reporter_id !== (int) $pengklaim->id, 422, 'Tidak dapat mengklaim laporan sendiri.');
 
         return DB::transaction(function () use ($item, $pengklaim): LostFoundItem {
-            $item->forceFill(['status' => 'claimed', 'claimant_id' => $pengklaim->id, 'claimed_at' => now()])->save();
-            $this->audit->record($pengklaim, 'lostfound.claimed', LostFoundItem::class, $item->id, [
-                'event_id' => $item->event_id, 'old' => ['status' => 'found'], 'new' => ['status' => 'claimed'],
+            $terkunci = LostFoundItem::whereKey($item->id)->lockForUpdate()->firstOrFail();
+            abort_unless($terkunci->status === 'found', 404, 'Barang tidak tersedia untuk diklaim.');
+            abort_unless($terkunci->claimant_id === null, 422, 'Barang sudah diklaim.');
+            abort_unless((int) $terkunci->reporter_id !== (int) $pengklaim->id, 422, 'Tidak dapat mengklaim laporan sendiri.');
+            $terkunci->forceFill(['status' => 'claimed', 'claimant_id' => $pengklaim->id, 'claimed_at' => now()])->save();
+            $this->audit->record($pengklaim, 'lostfound.claimed', LostFoundItem::class, $terkunci->id, [
+                'event_id' => $terkunci->event_id, 'old' => ['status' => 'found'], 'new' => ['status' => 'claimed'],
             ]);
 
-            return $item->refresh();
+            return $terkunci->refresh();
         });
     }
 
