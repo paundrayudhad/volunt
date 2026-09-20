@@ -73,6 +73,18 @@ class AssignmentService
         return DB::transaction(fn (): Assignment => $this->terapkanStatus($assignment->refresh(), 'confirmed', $actor, null));
     }
 
+    public function complete(Assignment $assignment, User $actor): Assignment
+    {
+        return DB::transaction(function () use ($assignment, $actor): Assignment {
+            $assignment = $assignment->refresh();
+            abort_unless($assignment->isActive(), 422, 'Hanya assignment aktif yang bisa diselesaikan.');
+            $shift = $assignment->shift()->firstOrFail();
+            abort_if(now()->lt($shift->end_at), 422, 'Shift belum selesai.');
+
+            return $this->terapkanStatus($assignment, 'completed', $actor, 'Evaluasi pasca-event selesai.');
+        });
+    }
+
     public function cancel(Assignment $assignment, User $actor, ?string $reason = null): Assignment
     {
         return DB::transaction(function () use ($assignment, $actor, $reason): Assignment {
