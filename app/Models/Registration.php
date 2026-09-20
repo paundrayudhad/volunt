@@ -67,6 +67,12 @@ class Registration extends Model
         return $this->hasOne(Assignment::class);
     }
 
+    /** @return HasOne<Certificate, $this> */
+    public function certificate(): HasOne
+    {
+        return $this->hasOne(Certificate::class);
+    }
+
     /** @return HasMany<RegistrationStatusHistory, $this> */
     public function histories(): HasMany
     {

@@ -38,6 +38,9 @@ class PermissionSeeder extends Seeder
         'attendance.read',
         'announcement.publish',
         'announcement.read',
+        'certificate.issue',
+        'certificate.revoke',
+        'certificate.read',
     ];
 
     public function run(): void

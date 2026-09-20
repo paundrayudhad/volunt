@@ -41,6 +41,9 @@ class MembershipService
         'attendance.read',
         'announcement.publish',
         'announcement.read',
+        'certificate.issue',
+        'certificate.revoke',
+        'certificate.read',
     ];
 
     public const OWNER_PERMS = self::GRANULAR;

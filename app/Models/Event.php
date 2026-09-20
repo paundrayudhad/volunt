@@ -97,6 +97,12 @@ class Event extends Model
         return $this->hasMany(Announcement::class);
     }
 
+    /** @return HasMany<Certificate, $this> */
+    public function certificates(): HasMany
+    {
+        return $this->hasMany(Certificate::class);
+    }
+
     /** @return HasMany<EventCustomField, $this> */
     public function customFields(): HasMany
     {
