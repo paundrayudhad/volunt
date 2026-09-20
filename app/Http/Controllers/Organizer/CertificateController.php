@@ -33,7 +33,7 @@ class CertificateController extends Controller
             'org' => $organization,
             'event' => $event,
             'certificates' => $items,
-            'diterbitkan' => Certificate::where('event_id', $event->id)->count(),
+            'diterbitkan' => Certificate::where('event_id', $event->id)->whereNull('revoked_at')->count(),
             'ambang' => $this->sertifikat->effectiveThreshold($event),
         ]);
     }
@@ -67,9 +67,13 @@ class CertificateController extends Controller
 
         $diterbitkan = count($hasil['issued']);
         $dilewati = $hasil['skipped'];
+        $pesan = "{$diterbitkan} sertifikat diterbitkan, {$dilewati} dilewati.";
+        if ($hasil['failed'] !== []) {
+            $pesan .= ' '.count($hasil['failed']).' gagal diterbitkan.';
+        }
 
         return redirect()->route('organizer.events.certificates.index', [$organization->slug, $event->slug])
-            ->with('status', "{$diterbitkan} sertifikat diterbitkan, {$dilewati} dilewati.");
+            ->with('status', $pesan);
     }
 
     public function revoke(RevokeCertificateRequest $request, Organization $organization, Event $event, Certificate $sertifikat): RedirectResponse

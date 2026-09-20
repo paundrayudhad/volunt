@@ -310,3 +310,15 @@ it('sertTesAdminTanpaRuteCertificate', function (): void {
         ->and(Route::has('admin.certificates.revoke'))->toBeFalse()
         ->and(Route::has('admin.registrations.index'))->toBeTrue();
 });
+
+it('sertTesBackfillMemberiPermOwnerLama', function (): void {
+    $s = sertMatriksPaket();
+    $s['owner']->revokePermissionTo(['certificate.issue', 'certificate.revoke', 'certificate.read']);
+    expect($s['owner']->refresh()->can('certificate.issue'))->toBeFalse();
+
+    (require base_path('database/migrations/2026_09_20_000003_backfill_certificate_permissions.php'))->up();
+
+    expect($s['owner']->refresh()->can('certificate.issue'))->toBeTrue()
+        ->and($s['owner']->can('certificate.revoke'))->toBeTrue()
+        ->and($s['owner']->can('certificate.read'))->toBeTrue();
+});

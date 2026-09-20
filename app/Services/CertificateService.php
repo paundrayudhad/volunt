@@ -7,8 +7,11 @@ use App\Models\Attendance;
 use App\Models\Certificate;
 use App\Models\Event;
 use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class CertificateService
 {
@@ -45,7 +48,7 @@ class CertificateService
         return $hadir / $penyebut * 100 >= $this->effectiveThreshold($event);
     }
 
-    /** @return array{issued: array<Certificate>, skipped: int} */
+    /** @return array{issued: array<Certificate>, skipped: int, failed: array<string>} */
     public function issueBatch(Event $event, User $actor, ?int $ambang = null): array
     {
         abort_unless(in_array($event->status, ['completed', 'archived'], true), 422, 'Sertifikat hanya diterbitkan untuk event yang sudah selesai.');
@@ -63,7 +66,8 @@ class CertificateService
                 ->with('shift')
                 ->get();
             foreach ($tugas as $item) {
-                if ($item->shift !== null && now()->gte($item->shift->end_at)) {
+                $segar = $item->refresh()->shift;
+                if ($segar !== null && now()->gte($segar->end_at)) {
                     $this->assignments->complete($item, $actor);
                 }
             }
@@ -73,22 +77,35 @@ class CertificateService
                 ->pluck('user_id');
             $diterbitkan = [];
             $dilewati = 0;
+            $gagal = [];
             foreach ($calonIds as $userId) {
-                $user = User::whereKey($userId)->firstOrFail();
-                if (! $this->layakUntukTerbit($terkunci->id, $user)) {
-                    $dilewati++;
+                try {
+                    $user = User::whereKey($userId)->firstOrFail();
+                    if (! $this->layakUntukTerbit($terkunci->refresh(), $user)) {
+                        $dilewati++;
 
-                    continue;
-                }
-                if (Certificate::where('event_id', $terkunci->id)->where('user_id', $userId)->exists()) {
-                    $dilewati++;
+                        continue;
+                    }
+                    if (Certificate::where('event_id', $terkunci->id)->where('user_id', $userId)->exists()) {
+                        $dilewati++;
 
-                    continue;
+                        continue;
+                    }
+                    if (! $user->registrations()->where('event_id', $terkunci->id)->where('status', 'accepted')->exists()) {
+                        $dilewati++;
+                        $gagal[] = $user->name ?? (string) $userId;
+
+                        continue;
+                    }
+                    $diterbitkan[] = $this->terbitkan($terkunci->refresh(), $user, $actor);
+                } catch (HttpException|ModelNotFoundException|QueryException) {
+                    $dilewati++;
+                    $nama = isset($user) ? ($user->name ?? (string) $userId) : (string) $userId;
+                    $gagal[] = $nama;
                 }
-                $diterbitkan[] = $this->terbitkan(Event::whereKey($terkunci->id)->firstOrFail(), $user, $actor);
             }
 
-            return ['issued' => $diterbitkan, 'skipped' => $dilewati];
+            return ['issued' => $diterbitkan, 'skipped' => $dilewati, 'failed' => $gagal];
         });
     }
 
@@ -121,20 +138,19 @@ class CertificateService
         });
     }
 
-    private function layakUntukTerbit(int $eventId, User $user): bool
+    private function layakUntukTerbit(Event $event, User $user): bool
     {
-        $event = Event::whereKey($eventId)->firstOrFail();
         if (! in_array($event->status, ['completed', 'archived'], true)) {
             return false;
         }
-        $hadir = Attendance::where('event_id', $eventId)
+        $hadir = Attendance::where('event_id', $event->id)
             ->where('user_id', $user->id)
             ->whereIn('status', ['present', 'late'])
             ->count();
         if ($hadir < 1) {
             return false;
         }
-        $penyebut = Assignment::where('event_id', $eventId)
+        $penyebut = Assignment::where('event_id', $event->id)
             ->where('user_id', $user->id)
             ->whereIn('status', [...Assignment::ACTIVE, 'completed'])
             ->whereHas('shift')

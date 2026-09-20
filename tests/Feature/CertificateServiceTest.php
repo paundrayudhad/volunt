@@ -475,3 +475,24 @@ it('sertTesIndividualTolakBilaPernahAda', function (): void {
             ->and(Certificate::where('event_id', $event->id)->where('user_id', $relawan->id)->count())->toBe(1);
     }
 });
+
+it('sertTesBatchKandidatAnomaliDiskip', function (): void {
+    $s = sertTesSetup();
+    $event = sertTesSelesaikanEvent($s);
+    $sehat = User::factory()->create();
+    $tugasSehat = sertTesTugaskan($s, sertTesRegistrasi($s, $sehat), sertTesShift($s, now()->subDays(4), now()->subDays(3)));
+    sertTesHadir($tugasSehat);
+    // Kandidat anomali: layak hitung (1 hadir / 1 completed) tapi TANPA
+    // registration accepted → pre-filter melewatinya tanpa menggugurkan batch.
+    $anomali = User::factory()->create();
+    $tugasAnomali = sertTesTugasMentah($s, $anomali, sertTesShift($s, now()->subDays(4), now()->subDays(3)), 'completed');
+    sertTesHadir($tugasAnomali);
+
+    $hasil = app(CertificateService::class)->issueBatch($event->refresh(), $s['owner']);
+
+    expect($hasil['issued'])->toHaveCount(1)
+        ->and($hasil['issued'][0]->user_id)->toBe($sehat->id)
+        ->and($hasil['skipped'])->toBe(1)
+        ->and($hasil['failed'])->toBe([$anomali->refresh()->name])
+        ->and(Certificate::where('event_id', $event->id)->count())->toBe(1);
+});
