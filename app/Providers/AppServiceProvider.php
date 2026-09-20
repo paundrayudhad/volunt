@@ -10,6 +10,8 @@ use App\Models\EventCustomField;
 use App\Models\EventDivision;
 use App\Models\EventRole;
 use App\Models\EventShift;
+use App\Models\Incident;
+use App\Models\LostFoundItem;
 use App\Models\Organization;
 use App\Models\OrganizationInvitation;
 use App\Models\OrganizationMember;
@@ -22,7 +24,9 @@ use App\Policies\CertificatePolicy;
 use App\Policies\CustomFieldPolicy;
 use App\Policies\DivisionPolicy;
 use App\Policies\EventPolicy;
+use App\Policies\IncidentPolicy;
 use App\Policies\InvitationPolicy;
+use App\Policies\LostFoundPolicy;
 use App\Policies\MemberPolicy;
 use App\Policies\OrganizationPolicy;
 use App\Policies\OrganizationRequestPolicy;
@@ -85,6 +89,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Announcement::class, AnnouncementPolicy::class);
         Gate::policy(Certificate::class, CertificatePolicy::class);
         Gate::policy(Registration::class, RegistrationPolicy::class);
+        Gate::policy(Incident::class, IncidentPolicy::class);
+        Gate::policy(LostFoundItem::class, LostFoundPolicy::class);
 
         Route::bind('organization', fn (string $value) => Organization::where('slug', $value)
             ->whereIn('id', auth()->user()?->organizations()->wherePivot('status', 'active')->pluck('organizations.id') ?? [])
@@ -152,6 +158,24 @@ class AppServiceProvider extends ServiceProvider
             $eventId = $event instanceof EventModel ? $event->getKey() : null;
 
             return Certificate::whereKey($value)
+                ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
+                ->firstOrFail();
+        });
+
+        Route::bind('incident', function (string $value): Incident {
+            $event = request()->route()?->parameter('event');
+            $eventId = $event instanceof EventModel ? $event->getKey() : null;
+
+            return Incident::whereKey($value)
+                ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
+                ->firstOrFail();
+        });
+
+        Route::bind('lostFoundItem', function (string $value): LostFoundItem {
+            $event = request()->route()?->parameter('event');
+            $eventId = $event instanceof EventModel ? $event->getKey() : null;
+
+            return LostFoundItem::whereKey($value)
                 ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
                 ->firstOrFail();
         });

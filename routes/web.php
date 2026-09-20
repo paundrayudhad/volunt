@@ -13,7 +13,9 @@ use App\Http\Controllers\Organizer\CertificateController as OrganizerCertificate
 use App\Http\Controllers\Organizer\CustomFieldController;
 use App\Http\Controllers\Organizer\DivisionController;
 use App\Http\Controllers\Organizer\EventController;
+use App\Http\Controllers\Organizer\IncidentController as OrganizerIncidentController;
 use App\Http\Controllers\Organizer\InvitationController;
+use App\Http\Controllers\Organizer\LostFoundController as OrganizerLostFoundController;
 use App\Http\Controllers\Organizer\MemberController;
 use App\Http\Controllers\Organizer\OrganizationController;
 use App\Http\Controllers\Organizer\RegistrationController as OrganizerRegistrationController;
@@ -242,6 +244,31 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         Route::post('revoke', [OrganizerCertificateController::class, 'revoke'])
                             ->middleware('password.confirm')
                             ->name('revoke');
+                    });
+                });
+
+                Route::prefix('incidents')->name('incidents.')->group(function () {
+                    Route::get('/', [OrganizerIncidentController::class, 'index'])->name('index');
+                    Route::post('/', [OrganizerIncidentController::class, 'store'])
+                        ->middleware('throttle:30,1')->name('store');
+                    Route::prefix('{incident}')->group(function () {
+                        Route::get('/', [OrganizerIncidentController::class, 'show'])->name('show');
+                        Route::post('assign', [OrganizerIncidentController::class, 'assign'])->name('assign');
+                        Route::post('transition', [OrganizerIncidentController::class, 'transition'])->name('transition');
+                        Route::post('reopen', [OrganizerIncidentController::class, 'reopen'])->name('reopen');
+                        Route::delete('/', [OrganizerIncidentController::class, 'destroy'])->name('destroy');
+                    });
+                });
+
+                Route::prefix('lost-found')->name('lost_found.')->group(function () {
+                    Route::get('/', [OrganizerLostFoundController::class, 'index'])->name('index');
+                    Route::post('/', [OrganizerLostFoundController::class, 'store'])
+                        ->middleware('throttle:30,1')->name('store');
+                    Route::prefix('{lostFoundItem}')->group(function () {
+                        Route::get('/', [OrganizerLostFoundController::class, 'show'])->name('show');
+                        Route::post('resolve-claim', [OrganizerLostFoundController::class, 'resolveClaim'])->name('resolve');
+                        Route::post('close', [OrganizerLostFoundController::class, 'close'])->name('close');
+                        Route::delete('/', [OrganizerLostFoundController::class, 'destroy'])->name('destroy');
                     });
                 });
             });
