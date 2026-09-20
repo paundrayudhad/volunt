@@ -262,12 +262,16 @@ it('sertTesAmbangPerEventDihormati', function (): void {
     expect($svc->isEligible($penuh->refresh(), $lengkap))->toBeTrue();
 });
 
-it('sertTesShiftSoftDeleteTakMasukPenyebut', function (): void {
+it('sertTesShiftDihapusTakMasukPenyebut', function (): void {
     $s = sertTesSetup();
     $event = sertTesSelesaikanEvent($s);
+    $event->forceFill(['certificate_min_attendance_pct' => 100])->save();
     $relawan = User::factory()->create();
     $paket = sertTesPaketRasio($s, $relawan, 2);
     sertTesHadir($paket['tugas'][0]);
+    // Kontrak: assignment yang shift-nya dihapus keluar dari penyebut
+    // → 1/1 = 100% → layak di ambang 100. Tanpa exclusion, 1/2 = 50% → tak layak.
+    // (Mekanisme saat ini: FK cascade menghapus assignment + guard whereHas('shift').)
     $paket['tugas'][1]->shift()->firstOrFail()->delete();
 
     expect(app(CertificateService::class)->isEligible($event->refresh(), $relawan))->toBeTrue();

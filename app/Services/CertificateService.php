@@ -29,7 +29,7 @@ class CertificateService
         $penyebut = Assignment::where('event_id', $event->id)
             ->where('user_id', $user->id)
             ->whereIn('status', Assignment::ACTIVE)
-            ->whereHas('shift', fn ($q) => $q->whereNull('deleted_at'))
+            ->whereHas('shift')
             ->count();
         if ($penyebut === 0) {
             return false;
@@ -137,7 +137,7 @@ class CertificateService
         $penyebut = Assignment::where('event_id', $eventId)
             ->where('user_id', $user->id)
             ->whereIn('status', [...Assignment::ACTIVE, 'completed'])
-            ->whereHas('shift', fn ($q) => $q->whereNull('deleted_at'))
+            ->whereHas('shift')
             ->count();
         if ($penyebut === 0) {
             return false;
