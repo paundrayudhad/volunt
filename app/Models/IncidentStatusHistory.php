@@ -11,6 +11,11 @@ class IncidentStatusHistory extends Model
 
     protected $fillable = [];
 
+    /** @var array<string, string> */
+    protected $casts = [
+        'created_at' => 'datetime',
+    ];
+
     /** @return BelongsTo<Incident, $this> */
     public function incident(): BelongsTo
     {
