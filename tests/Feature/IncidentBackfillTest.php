@@ -7,6 +7,7 @@ use App\Models\OrganizationMember;
 use App\Models\User;
 use App\Services\IncidentService;
 use Database\Seeders\PermissionSeeder;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -164,4 +165,40 @@ it('hapus insiden, item tetap ada', function () {
     $insiden->delete();
 
     expect($item->refresh()->exists)->toBeTrue();
+});
+
+it('up() membuat permission yang hilang lalu backfill owner lama', function () {
+    $org = Organization::factory()->create();
+    $owner = User::factory()->create();
+    OrganizationMember::unguarded(fn () => OrganizationMember::create([
+        'organization_id' => $org->id,
+        'user_id' => $owner->id,
+        'role' => 'owner',
+        'status' => 'active',
+        'joined_at' => now(),
+    ]));
+
+    Permission::whereIn('name', ['incident.manage', 'incident.report', 'lostfound.manage'])->delete();
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+    (require base_path('database/migrations/2026_09_20_000006_backfill_incident_permissions.php'))->up();
+
+    expect($owner->refresh()->can('incident.manage'))->toBeTrue()
+        ->and($owner->can('incident.report'))->toBeTrue()
+        ->and($owner->can('lostfound.manage'))->toBeTrue();
+});
+
+it('down() tak mencabut incident.report milik staff aktif; non-member kehilangan semua', function () {
+    $paket = g5bPaketKetahanan();
+    $paket['staf']->givePermissionTo('incident.report');
+    $luar = User::factory()->create();
+    $luar->givePermissionTo(['incident.manage', 'incident.report', 'lostfound.manage']);
+
+    (require base_path('database/migrations/2026_09_20_000006_backfill_incident_permissions.php'))->down();
+
+    expect($paket['owner']->refresh()->can('incident.manage'))->toBeTrue()
+        ->and($paket['staf']->refresh()->can('incident.report'))->toBeTrue()
+        ->and($luar->refresh()->can('incident.manage'))->toBeFalse()
+        ->and($luar->can('incident.report'))->toBeFalse()
+        ->and($luar->can('lostfound.manage'))->toBeFalse();
 });

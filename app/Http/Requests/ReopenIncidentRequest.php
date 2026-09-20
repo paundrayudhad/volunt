@@ -26,7 +26,7 @@ class ReopenIncidentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'reason' => ['required', 'string', 'min:10', 'max:2000'],
+            'reason' => ['required', 'string', 'min:10', 'max:500'],
         ];
     }
 

@@ -164,3 +164,19 @@ it('anggota org tanpa registration accepted tak bisa lapor via volunteer', funct
         'description' => 'Keributan di antrean pintu masuk A.',
     ])->assertNotFound();
 });
+
+it('foto hilang di disk 404', function () {
+    Storage::fake('local');
+    $s = volInsSetup();
+    $item = app(LostFoundService::class)->report($s['event'], $s['vol'], [
+        'kind' => 'found',
+        'item_name' => 'Dompet',
+        'location' => 'Posko informasi',
+        'photo' => volInsFoto(),
+    ]);
+    Storage::disk('local')->delete($item->photo_path);
+
+    $url = URL::signedRoute('lostfound.photo', ['lostFoundItem' => $item->id], now()->addMinutes(30));
+
+    $this->actingAs($s['vol'])->get($url)->assertNotFound();
+});

@@ -22,6 +22,7 @@ class LostFoundPhotoController extends Controller
                     ->where('status', 'accepted')
                     ->exists());
         abort_unless($boleh, 404);
+        abort_unless(Storage::disk('local')->exists($lostFoundItem->photo_path), 404);
 
         return response(
             Storage::disk('local')->get($lostFoundItem->photo_path),

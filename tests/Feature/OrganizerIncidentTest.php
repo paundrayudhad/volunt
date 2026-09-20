@@ -173,3 +173,52 @@ it('lostfound lapor dan resolve klaim via http', function (): void {
 
     expect($item->refresh()->status)->toBe('returned');
 });
+
+it('transition note 501 karakter ditolak 422', function (): void {
+    $s = insWebSetup();
+    $insiden = Incident::factory()->create([
+        'event_id' => $s['event']->id,
+        'reporter_id' => $s['owner']->id,
+        'status' => 'open',
+    ]);
+    $show = route('organizer.events.incidents.show', insWebParam($s, $insiden));
+
+    $this->actingAs($s['owner'])->from($show)->post(route('organizer.events.incidents.transition', insWebParam($s, $insiden)), [
+        'to' => 'assigned',
+        'note' => str_repeat('a', 501),
+    ])->assertRedirect($show)->assertSessionHasErrors('note');
+
+    expect($insiden->refresh()->status)->toBe('open');
+});
+
+it('reopen reason 501 karakter ditolak 422', function (): void {
+    $s = insWebSetup();
+    $insiden = Incident::factory()->create([
+        'event_id' => $s['event']->id,
+        'reporter_id' => $s['owner']->id,
+        'status' => 'resolved',
+    ]);
+    $show = route('organizer.events.incidents.show', insWebParam($s, $insiden));
+
+    $this->actingAs($s['owner'])->from($show)->post(route('organizer.events.incidents.reopen', insWebParam($s, $insiden)), [
+        'reason' => str_repeat('a', 501),
+    ])->assertRedirect($show)->assertSessionHasErrors('reason');
+
+    expect($insiden->refresh()->status)->toBe('resolved');
+});
+
+it('transition note 500 karakter diterima', function (): void {
+    $s = insWebSetup();
+    $insiden = Incident::factory()->create([
+        'event_id' => $s['event']->id,
+        'reporter_id' => $s['owner']->id,
+        'status' => 'open',
+    ]);
+
+    $this->actingAs($s['owner'])->post(route('organizer.events.incidents.transition', insWebParam($s, $insiden)), [
+        'to' => 'assigned',
+        'note' => str_repeat('b', 500),
+    ])->assertRedirect()->assertSessionHasNoErrors();
+
+    expect($insiden->refresh()->status)->toBe('assigned');
+});

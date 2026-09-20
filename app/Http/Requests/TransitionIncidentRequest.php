@@ -28,7 +28,7 @@ class TransitionIncidentRequest extends FormRequest
     {
         return [
             'to' => ['required', Rule::in(Incident::STATUSES)],
-            'note' => ['nullable', 'string', 'max:2000'],
+            'note' => ['nullable', 'string', 'max:500'],
         ];
     }
 

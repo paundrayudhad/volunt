@@ -15,9 +15,8 @@ return new class extends Migration
     public function up(): void
     {
         $perms = ['incident.manage', 'incident.report', 'lostfound.manage'];
-        $ada = Permission::whereIn('name', $perms)->pluck('name')->all();
-        if (count($ada) !== count($perms)) {
-            return;
+        foreach ($perms as $nama) {
+            Permission::findOrCreate($nama, 'web');
         }
         OrganizationMember::where('role', 'owner')
             ->where('status', 'active')
@@ -32,20 +31,32 @@ return new class extends Migration
     }
 
     /**
-     * Hanya mencabut dari user yang kini BUKAN owner aktif — tidak pernah
-     * mencabut hak yang masih valid.
+     * Mencabut manage-perm (incident.manage, lostfound.manage) dari semua yang
+     * kini bukan owner aktif, dan incident.report hanya dari yang kini BUKAN
+     * staff aktif DAN bukan owner aktif — hak report sah milik staff posko
+     * (spec §1) tidak pernah dicabut.
      */
     public function down(): void
     {
-        $perms = ['incident.manage', 'incident.report', 'lostfound.manage'];
         $ownerAktif = OrganizationMember::where('role', 'owner')
             ->where('status', 'active')
             ->distinct()
             ->pluck('user_id')
             ->all();
-        User::whereNotIn('id', $ownerAktif === [] ? [0] : $ownerAktif)
-            ->each(function (User $user) use ($perms): void {
-                $user->revokePermissionTo($perms);
+        $stafAktif = OrganizationMember::where('role', 'staff')
+            ->where('status', 'active')
+            ->distinct()
+            ->pluck('user_id')
+            ->all();
+        $fallback = [0];
+        User::whereNotIn('id', $ownerAktif === [] ? $fallback : $ownerAktif)
+            ->each(function (User $user): void {
+                $user->revokePermissionTo(['incident.manage', 'lostfound.manage']);
+            });
+        $terlindungi = array_unique(array_merge($ownerAktif, $stafAktif));
+        User::whereNotIn('id', $terlindungi === [] ? $fallback : $terlindungi)
+            ->each(function (User $user): void {
+                $user->revokePermissionTo('incident.report');
             });
     }
 };
