@@ -119,6 +119,12 @@ it('cancel dari done ditolak 422', function () {
     app(ArtistService::class)->cancel($artis, $owner, 'Alasan yang cukup panjang.');
 })->throws(HttpException::class, 'Hanya artis yang belum tampil yang dapat dibatalkan.');
 
+it('cancel dari cancelled ditolak 422', function () {
+    [$event, $owner, $artis] = buatArtis(['status' => 'cancelled']);
+
+    app(ArtistService::class)->cancel($artis, $owner, 'Alasan yang cukup panjang.');
+})->throws(HttpException::class, 'Hanya artis yang belum tampil yang dapat dibatalkan.');
+
 it('kehadiran bolak-balik arrived dan no_show', function () {
     [$event, $owner, $artis] = buatArtis();
     $svc = app(ArtistService::class);
