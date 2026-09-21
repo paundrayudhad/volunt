@@ -109,6 +109,12 @@ class Event extends Model
         return $this->hasMany(Incident::class);
     }
 
+    /** @return HasMany<Artist, $this> */
+    public function artists(): HasMany
+    {
+        return $this->hasMany(Artist::class);
+    }
+
     /** @return HasMany<LostFoundItem, $this> */
     public function lostFoundItems(): HasMany
     {

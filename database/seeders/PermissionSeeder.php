@@ -44,6 +44,9 @@ class PermissionSeeder extends Seeder
         'incident.manage',
         'incident.report',
         'lostfound.manage',
+        'artist.manage',
+        'artist.liaise',
+        'artist.read',
     ];
 
     public function run(): void
