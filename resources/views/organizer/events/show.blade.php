@@ -65,7 +65,7 @@
             @can('viewAny', [\App\Models\Artist::class, $event])
                 <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6 text-gray-900 dark:text-gray-100">
-                        <h3 class="font-semibold">Artis ({{ $event->artists->count() }})</h3>
+                        <h3 class="font-semibold">Artis ({{ $event->artists_count }})</h3>
                         @if ($event->artists->isEmpty())
                             <p class="mt-2 text-sm text-gray-500">Belum ada artis pada event ini.</p>
                         @else

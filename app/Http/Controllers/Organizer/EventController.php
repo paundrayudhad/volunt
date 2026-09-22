@@ -47,6 +47,7 @@ class EventController extends Controller
         Gate::authorize('view', $event);
 
         $event->load(['divisions.roles', 'roles', 'shifts']);
+        $event->loadCount('artists');
 
         $event->setRelation('artists', $event->artists()
             ->orderByRaw('scheduled_at IS NULL')

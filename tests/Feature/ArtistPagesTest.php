@@ -78,7 +78,8 @@ it('render halaman artis organizer dengan konten nyata', function () {
         ->get(route('organizer.events.show', [$paket['org']->slug, $paket['event']->slug]))
         ->assertOk()
         ->assertSee('Kelola Artis', false)
-        ->assertSee('Band Render', false);
+        ->assertSee('Band Render', false)
+        ->assertSee('Artis (1)', false);
 });
 
 it('render halaman dampingan LO dan sembunyikan form mutasi dari read-only', function () {
