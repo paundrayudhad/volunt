@@ -27,6 +27,9 @@
                         @can('update', $event)
                             <a href="{{ route('organizer.events.edit', [$org->slug, $event->slug]) }}" class="underline">Ubah event</a>
                         @endcan
+                        @can('viewAny', [\App\Models\Artist::class, $event])
+                            <a href="{{ route('organizer.events.artists.index', [$org->slug, $event->slug]) }}" class="underline">Kelola Artis</a>
+                        @endcan
                     </div>
 
                     @can('publish', $event)
@@ -58,6 +61,27 @@
                     @endcan
                 </div>
             </div>
+
+            @can('viewAny', [\App\Models\Artist::class, $event])
+                <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6 text-gray-900 dark:text-gray-100">
+                        <h3 class="font-semibold">Artis ({{ $event->artists->count() }})</h3>
+                        @if ($event->artists->isEmpty())
+                            <p class="mt-2 text-sm text-gray-500">Belum ada artis pada event ini.</p>
+                        @else
+                            <ul class="mt-2 text-sm space-y-1">
+                                @foreach ($event->artists as $artis)
+                                    <li>
+                                        <a href="{{ route('organizer.events.artists.show', [$org->slug, $event->slug, $artis->id]) }}" class="underline">{{ $artis->name }}</a>
+                                        <span class="text-gray-500">— {{ $artis->scheduled_at?->format('d M Y H:i') ?? 'Jadwal menyusul' }} ({{ $artis->status }})</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                        <a href="{{ route('organizer.events.artists.index', [$org->slug, $event->slug]) }}" class="underline text-sm mt-3 inline-block">Kelola Artis</a>
+                    </div>
+                </div>
+            @endcan
 
             <div class="grid md:grid-cols-3 gap-6">
                 <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">

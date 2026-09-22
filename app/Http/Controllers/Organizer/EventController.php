@@ -48,6 +48,13 @@ class EventController extends Controller
 
         $event->load(['divisions.roles', 'roles', 'shifts']);
 
+        $event->setRelation('artists', $event->artists()
+            ->orderByRaw('scheduled_at IS NULL')
+            ->orderBy('scheduled_at')
+            ->orderByDesc('id')
+            ->take(5)
+            ->get());
+
         return view('organizer.events.show', ['org' => $organization, 'event' => $event]);
     }
 
