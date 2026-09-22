@@ -47,6 +47,9 @@ class MembershipService
         'incident.manage',
         'incident.report',
         'lostfound.manage',
+        'artist.manage',
+        'artist.liaise',
+        'artist.read',
     ];
 
     public const OWNER_PERMS = self::GRANULAR;

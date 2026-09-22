@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Models\Announcement;
+use App\Models\Artist;
+use App\Models\ArtistLiaison;
 use App\Models\Assignment;
 use App\Models\Certificate;
 use App\Models\Event as EventModel;
@@ -19,6 +21,7 @@ use App\Models\OrganizationRequest;
 use App\Models\Registration;
 use App\Models\User;
 use App\Policies\AnnouncementPolicy;
+use App\Policies\ArtistPolicy;
 use App\Policies\AssignmentPolicy;
 use App\Policies\CertificatePolicy;
 use App\Policies\CustomFieldPolicy;
@@ -91,6 +94,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Registration::class, RegistrationPolicy::class);
         Gate::policy(Incident::class, IncidentPolicy::class);
         Gate::policy(LostFoundItem::class, LostFoundPolicy::class);
+        Gate::policy(Artist::class, ArtistPolicy::class);
 
         Route::bind('organization', fn (string $value) => Organization::where('slug', $value)
             ->whereIn('id', auth()->user()?->organizations()->wherePivot('status', 'active')->pluck('organizations.id') ?? [])
@@ -168,6 +172,24 @@ class AppServiceProvider extends ServiceProvider
 
             return Incident::whereKey($value)
                 ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
+                ->firstOrFail();
+        });
+
+        Route::bind('artist', function (string $value): Artist {
+            $event = request()->route()?->parameter('event');
+            $eventId = $event instanceof EventModel ? $event->getKey() : null;
+
+            return Artist::whereKey($value)
+                ->when($eventId !== null, fn ($query) => $query->where('event_id', $eventId))
+                ->firstOrFail();
+        });
+
+        Route::bind('liaison', function (string $value): ArtistLiaison {
+            $artist = request()->route()?->parameter('artist');
+            $artistId = $artist instanceof Artist ? $artist->getKey() : null;
+
+            return ArtistLiaison::whereKey($value)
+                ->when($artistId !== null, fn ($query) => $query->where('artist_id', $artistId))
                 ->firstOrFail();
         });
 

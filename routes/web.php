@@ -22,6 +22,7 @@ use App\Http\Controllers\Organizer\OrganizationController;
 use App\Http\Controllers\Organizer\RegistrationController as OrganizerRegistrationController;
 use App\Http\Controllers\Organizer\RoleController;
 use App\Http\Controllers\Organizer\ShiftController;
+use App\Http\Controllers\OrganizerArtistController;
 use App\Http\Controllers\PublicCertificateController;
 use App\Http\Controllers\PublicEventController;
 use App\Http\Controllers\Volunteer\AnnouncementController as VolunteerAnnouncementController;
@@ -31,6 +32,7 @@ use App\Http\Controllers\Volunteer\IncidentController as VolunteerIncidentContro
 use App\Http\Controllers\Volunteer\LostFoundController as VolunteerLostFoundController;
 use App\Http\Controllers\Volunteer\NotificationController as VolunteerNotificationController;
 use App\Http\Controllers\Volunteer\ScheduleController as VolunteerScheduleController;
+use App\Http\Controllers\VolunteerLiaisonController;
 use App\Http\Controllers\VolunteerProfileController;
 use App\Http\Controllers\VolunteerRegistrationController;
 use Illuminate\Support\Facades\Route;
@@ -112,6 +114,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('my/incidents', [VolunteerIncidentController::class, 'store'])
         ->middleware('throttle:30,1')
         ->name('my.incidents.store');
+    Route::get('my/liaison', [VolunteerLiaisonController::class, 'index'])->name('my.liaison.index');
+    Route::get('my/liaison/{artist}', [VolunteerLiaisonController::class, 'show'])->name('my.liaison.show');
+    Route::post('my/liaison/{artist}/status', [VolunteerLiaisonController::class, 'status'])
+        ->middleware('throttle:30,1')
+        ->name('my.liaison.status');
+    Route::post('my/liaison/{artist}/notes', [VolunteerLiaisonController::class, 'note'])
+        ->middleware('throttle:30,1')
+        ->name('my.liaison.note');
+    Route::post('my/liaison/{artist}/rider', [VolunteerLiaisonController::class, 'rider'])
+        ->middleware('throttle:30,1')
+        ->name('my.liaison.rider');
     Route::get('my/lost-found', [VolunteerLostFoundController::class, 'index'])
         ->name('my.lost_found.index');
     Route::post('my/lost-found', [VolunteerLostFoundController::class, 'store'])
@@ -277,6 +290,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         Route::post('reopen', [OrganizerIncidentController::class, 'reopen'])->name('reopen');
                         Route::delete('/', [OrganizerIncidentController::class, 'destroy'])->name('destroy');
                     });
+                });
+
+                Route::prefix('artists')->name('artists.')->group(function () {
+                    Route::get('/', [OrganizerArtistController::class, 'index'])->name('index');
+                    Route::post('/', [OrganizerArtistController::class, 'store'])
+                        ->middleware('throttle:30,1')->name('store');
+                    Route::prefix('{artist}')->group(function () {
+                        Route::get('/', [OrganizerArtistController::class, 'show'])->name('show');
+                        Route::put('/', [OrganizerArtistController::class, 'update'])->name('update');
+                        Route::post('transition', [OrganizerArtistController::class, 'transition'])
+                            ->middleware('throttle:30,1')->name('transition');
+                        Route::post('assign', [OrganizerArtistController::class, 'assign'])
+                            ->middleware('throttle:30,1')->name('assign');
+                        Route::post('notes', [OrganizerArtistController::class, 'note'])
+                            ->middleware('throttle:30,1')->name('notes.store');
+                        Route::post('rider', [OrganizerArtistController::class, 'rider'])
+                            ->middleware('throttle:30,1')->name('rider.toggle');
+                        Route::delete('/', [OrganizerArtistController::class, 'destroy'])->name('destroy');
+                    });
+                    Route::post('liaisons/{liaison}/release', [OrganizerArtistController::class, 'release'])->name('liaisons.release');
                 });
 
                 Route::prefix('lost-found')->name('lost_found.')->group(function () {

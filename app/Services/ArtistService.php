@@ -120,6 +120,17 @@ class ArtistService
         });
     }
 
+    public function destroy(Artist $artis, User $actor): void
+    {
+        DB::transaction(function () use ($artis, $actor): void {
+            $artis->delete();
+            $this->audit->record($actor, 'artist.deleted', Artist::class, $artis->id, [
+                'event_id' => $artis->event_id,
+                'old' => ['name' => $artis->name],
+            ]);
+        });
+    }
+
     public function addNote(Artist $artis, User $penulis, string $isi): ArtistNote
     {
         $tubuh = trim($isi);
