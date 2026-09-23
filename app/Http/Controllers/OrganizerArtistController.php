@@ -33,6 +33,9 @@ class OrganizerArtistController extends Controller
             ->with(['liaisons.user'])
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
             ->when($request->query('attendance'), fn ($query, $kehadiran) => $query->where('attendance', $kehadiran))
+            ->orderByRaw('scheduled_at IS NULL')
+            ->orderBy('scheduled_at')
+            ->orderBy('performance_order')
             ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString();
@@ -145,12 +148,13 @@ class OrganizerArtistController extends Controller
             ->with('status', 'LO berhasil ditugaskan.');
     }
 
-    public function release(Organization $organization, Event $event, ArtistLiaison $liaison): RedirectResponse
+    public function release(Request $request, Organization $organization, Event $event, Artist $artis, ArtistLiaison $liaison): RedirectResponse
     {
-        Gate::authorize('manage', $liaison->artist);
+        abort_unless($liaison->artist !== null, 404);
+        Gate::authorize('manage', $artis);
 
-        $artisId = $liaison->artist_id;
-        $this->artis->releaseLiaison($liaison, request()->user());
+        $artisId = $artis->id;
+        $this->artis->releaseLiaison($liaison, $request->user());
 
         return redirect()->route('organizer.events.artists.show', [$organization->slug, $event->slug, $artisId])
             ->with('status', 'LO dilepas dari artis.');

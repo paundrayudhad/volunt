@@ -11,6 +11,7 @@ use App\Models\Registration;
 use App\Models\User;
 use App\Services\ArtistService;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /** @return array{0: Event, 1: User} */
 function buatPaketKonflik(): array
@@ -216,6 +217,24 @@ it('assign LO non-volunteer event ditolak 422', function () {
     app(ArtistService::class)->assignLiaison($artis, $owner, $luar);
 })->throws(HttpException::class, 'Hanya volunteer event ini yang dapat menjadi LO.');
 
+it('assign LO dengan registration withdrawn ditolak 422', function () {
+    [$event, $owner] = buatPaketKonflik();
+    $artis = buatArtisTerjadwal($event);
+    [, $relawan] = buatRelawanDiterima($event);
+    Registration::where('user_id', $relawan->id)->where('event_id', $event->id)->update(['status' => 'withdrawn']);
+
+    app(ArtistService::class)->assignLiaison($artis, $owner, $relawan);
+})->throws(HttpException::class, 'Hanya volunteer event ini yang dapat menjadi LO.');
+
+it('assign LO dengan registration cancelled ditolak 422', function () {
+    [$event, $owner] = buatPaketKonflik();
+    $artis = buatArtisTerjadwal($event);
+    [, $relawan] = buatRelawanDiterima($event);
+    Registration::where('user_id', $relawan->id)->where('event_id', $event->id)->update(['status' => 'cancelled']);
+
+    app(ArtistService::class)->assignLiaison($artis, $owner, $relawan);
+})->throws(HttpException::class, 'Hanya volunteer event ini yang dapat menjadi LO.');
+
 it('assign LO volunteer event lain ditolak 422', function () {
     [$event, $owner] = buatPaketKonflik();
     [$eventLain] = buatPaketKonflik();
@@ -275,6 +294,17 @@ it('release LO soft-delete dan tercatat audit', function () {
     expect(ArtistLiaison::withTrashed()->find($liaison->id)->trashed())->toBeTrue()
         ->and($artis->liaisons()->where('user_id', $relawan->id)->exists())->toBeFalse();
 });
+
+it('release LO kedua pada baris trashed ditolak 404', function () {
+    [$event, $owner] = buatPaketKonflik();
+    $artis = buatArtisTerjadwal($event);
+    [, $relawan] = buatRelawanDiterima($event);
+    $svc = app(ArtistService::class);
+    $liaison = $svc->assignLiaison($artis, $owner, $relawan);
+    $svc->releaseLiaison($liaison, $owner);
+
+    $svc->releaseLiaison($liaison, $owner);
+})->throws(NotFoundHttpException::class);
 
 it('addNote menyimpan catatan dan tercatat audit', function () {
     [$event, $owner] = buatPaketKonflik();

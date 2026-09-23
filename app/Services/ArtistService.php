@@ -89,6 +89,10 @@ class ArtistService
 
     public function assignLiaison(Artist $artis, User $actor, User $lo): ArtistLiaison
     {
+        // TOCTOU: cek konflik di validasiJadwal()/validasiDampingan() memakai check-then-write
+        // tanpa lock — dua request konkuren bisa lolos dua-duanya. Diterima eksplisit di final
+        // review 5C: skala admin event kecil dan partial unique index `artist_liaisons_aktif_unique`
+        // sudah menahan duplikat liaison di level DB. Naikkan ke transaksi+lockForUpdate bila skala naik.
         abort_unless($this->volunteerEvent($artis->event_id, $lo->id), 422, 'Hanya volunteer event ini yang dapat menjadi LO.');
         abort_if($artis->liaisons()->where('user_id', $lo->id)->exists(), 422, 'Volunteer sudah menjadi LO artis ini.');
         $this->validasiDampingan($artis, $lo);
@@ -109,12 +113,15 @@ class ArtistService
 
     public function releaseLiaison(ArtistLiaison $liaison, User $actor): void
     {
+        abort_if($liaison->trashed(), 404);
+
         DB::transaction(function () use ($liaison, $actor): void {
-            $masihAktif = ! $liaison->trashed();
             $liaison->delete();
             $this->audit->record($actor, 'artist.liaison_released', ArtistLiaison::class, $liaison->id, [
                 'event_id' => $liaison->artist->event_id,
-                'old' => ['aktif' => $masihAktif],
+                // Guard abort di atas menjamin baris aktif saat di-release (old selalu aktif=true,
+                // bukan no-op audit seperti double-release yang dulu tercatat diam-diam).
+                'old' => ['aktif' => true],
                 'new' => ['aktif' => false],
             ]);
         });
@@ -264,6 +271,11 @@ class ArtistService
     /**
      * Mekanisme sama persis dengan penentu "event yang ia ikuti" di
      * Volunteer\IncidentController::diikuti(): registrations dengan status accepted.
+     *
+     * "Volunteer aktif" = registration dengan `status = 'accepted'` (kolom tunggal; tidak ada
+     * kolom state terpisah — accepted hanya bermutasi ke cancelled, lihat Registration::TRANSITIONS,
+     * sementara penarikan mengganti nilai kolom itu menjadi withdrawn/cancelled), sehingga
+     * volunteer yang menarik diri otomatis tereliminasi predikat ini.
      */
     private function volunteerEvent(int $eventId, int $userId): bool
     {

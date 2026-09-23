@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Artist;
+use App\Models\ArtistLiaison;
 use App\Models\Event;
 use App\Models\EventRole;
 use App\Models\Organization;
@@ -122,7 +123,7 @@ it('tamu diarahkan ke login', function (): void {
     $this->put(route('organizer.events.artists.update', [$org, $event, $artis->id]), ['name' => 'Band Tamu Ubah'])->assertRedirect(route('login'));
     $this->post(route('organizer.events.artists.transition', [$org, $event, $artis->id]), ['to' => 'soundcheck'])->assertRedirect(route('login'));
     $this->post(route('organizer.events.artists.assign', [$org, $event, $artis->id]), ['user_id' => $lo->id])->assertRedirect(route('login'));
-    $this->post(route('organizer.events.artists.liaisons.release', [$org, $event, $liaison->id]))->assertRedirect(route('login'));
+    $this->post(route('organizer.events.artists.liaisons.release', [$org, $event, $artis->id, $liaison->id]))->assertRedirect(route('login'));
     $this->post(route('organizer.events.artists.notes.store', [$org, $event, $artis->id]), ['body' => 'Catatan tamu.'])->assertRedirect(route('login'));
     $this->post(route('organizer.events.artists.rider.toggle', [$org, $event, $artis->id]), ['fulfilled' => true])->assertRedirect(route('login'));
     $this->delete(route('organizer.events.artists.destroy', [$org, $event, $artis->id]))->assertRedirect(route('login'));
@@ -164,7 +165,7 @@ it('staf tanpa izin 403 index dan semua mutasi', function (): void {
         ->post(route('organizer.events.artists.assign', [$org, $event, $artis->id]), ['user_id' => $calon->id])
         ->assertForbidden();
     $this->actingAs($paket['staf'])
-        ->post(route('organizer.events.artists.liaisons.release', [$org, $event, $liaison->id]))
+        ->post(route('organizer.events.artists.liaisons.release', [$org, $event, $artis->id, $liaison->id]))
         ->assertForbidden();
     $this->actingAs($paket['staf'])
         ->post(route('organizer.events.artists.notes.store', [$org, $event, $artis->id]), ['body' => 'Catatan staf.'])
@@ -220,7 +221,7 @@ it('staf read-only bisa baca tetapi 403 semua mutasi', function (): void {
         ->post(route('organizer.events.artists.assign', [$org, $event, $artis->id]), ['user_id' => $calon->id])
         ->assertForbidden();
     $this->actingAs($paket['baca'])
-        ->post(route('organizer.events.artists.liaisons.release', [$org, $event, $liaison->id]))
+        ->post(route('organizer.events.artists.liaisons.release', [$org, $event, $artis->id, $liaison->id]))
         ->assertForbidden();
     $this->actingAs($paket['baca'])
         ->post(route('organizer.events.artists.notes.store', [$org, $event, $artis->id]), ['body' => 'Catatan baca.'])
@@ -392,6 +393,22 @@ it('lintas event satu org 404', function (): void {
     expect($artis->refresh()->status)->toBe('scheduled');
 });
 
+it('release liaison tidak bisa lintas event satu org', function (): void {
+    $paket = aaPaket();
+    $artis = aaArtis($paket['event'], $paket['owner'], 'Band Sumber');
+    $lo = aaLo($paket, $artis);
+    $liaison = ArtistLiaison::where('artist_id', $artis->id)->where('user_id', $lo->id)->firstOrFail();
+    $eventLain = Event::factory()->create(['organization_id' => $paket['org']->id]);
+    $org = $paket['org']->slug;
+
+    // URL event lain + id liaison milik artis event lain → binding ter-scope → 404 tanpa mutasi.
+    $this->actingAs($paket['owner'])
+        ->post(route('organizer.events.artists.liaisons.release', [$org, $eventLain->slug, $artis->id, $liaison->id]))
+        ->assertNotFound();
+
+    expect(ArtistLiaison::whereKey($liaison->id)->whereNull('deleted_at')->exists())->toBeTrue();
+});
+
 it('assign LO via HTTP: owner OK, staf 403, volunteer 404', function (): void {
     $paket = aaPaket();
     $artis = aaArtis($paket['event'], $paket['owner'], 'Band Assign');
@@ -424,11 +441,11 @@ it('release LO via HTTP membuat LO lama 404 di scope-nya', function (): void {
     $event = $paket['event']->slug;
 
     $this->actingAs($paket['staf'])
-        ->post(route('organizer.events.artists.liaisons.release', [$org, $event, $liaisonId]))
+        ->post(route('organizer.events.artists.liaisons.release', [$org, $event, $artis->id, $liaisonId]))
         ->assertForbidden();
 
     $this->actingAs($paket['owner'])
-        ->post(route('organizer.events.artists.liaisons.release', [$org, $event, $liaisonId]))
+        ->post(route('organizer.events.artists.liaisons.release', [$org, $event, $artis->id, $liaisonId]))
         ->assertRedirect(route('organizer.events.artists.show', [$org, $event, $artis->id]));
 
     $this->assertSoftDeleted('artist_liaisons', ['id' => $liaisonId]);

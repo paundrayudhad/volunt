@@ -20,6 +20,9 @@ class VolunteerLiaisonController extends Controller
     {
         $items = Artist::whereIn('id', ArtistLiaison::where('user_id', request()->user()->id)->pluck('artist_id'))
             ->with(['event', 'event.organization'])
+            ->orderByRaw('scheduled_at IS NULL')
+            ->orderBy('scheduled_at')
+            ->orderBy('performance_order')
             ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString();

@@ -308,8 +308,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         Route::post('rider', [OrganizerArtistController::class, 'rider'])
                             ->middleware('throttle:30,1')->name('rider.toggle');
                         Route::delete('/', [OrganizerArtistController::class, 'destroy'])->name('destroy');
+                        Route::post('liaisons/{liaison}/release', [OrganizerArtistController::class, 'release'])->name('liaisons.release');
                     });
-                    Route::post('liaisons/{liaison}/release', [OrganizerArtistController::class, 'release'])->name('liaisons.release');
                 });
 
                 Route::prefix('lost-found')->name('lost_found.')->group(function () {

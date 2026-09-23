@@ -122,3 +122,35 @@ it('render halaman dampingan LO dan sembunyikan form mutasi dari read-only', fun
         ->assertDontSee('Ubah tahap tampil', false)
         ->assertDontSee('Tugaskan LO', false);
 });
+
+it('index artis diurutkan jadwal lalu urutan tampil, tanpa jadwal ke bawah', function () {
+    $paket = aptPaket();
+    $jadwalPagi = $paket['event']->start_at->copy()->addHours(2);
+    $jadwalSiang = $paket['event']->start_at->copy()->addHours(5);
+
+    $dini = app(ArtistService::class)->create($paket['event'], $paket['owner'], [
+        'name' => 'Band AAA Dini',
+        'scheduled_at' => $jadwalSiang->toDateTimeString(),
+        'performance_order' => 9,
+    ]);
+    $pagi = app(ArtistService::class)->create($paket['event'], $paket['owner'], [
+        'name' => 'Band BBB Pagi',
+        'scheduled_at' => $jadwalPagi->toDateTimeString(),
+        'performance_order' => 2,
+    ]);
+    $siang = app(ArtistService::class)->create($paket['event'], $paket['owner'], [
+        'name' => 'Band CCC Siang',
+        'scheduled_at' => $jadwalSiang->toDateTimeString(),
+        'performance_order' => 1,
+    ]);
+    app(ArtistService::class)->create($paket['event'], $paket['owner'], ['name' => 'Band DDD Tanpa Jadwal']);
+
+    $this->actingAs($paket['owner'])
+        ->get(route('organizer.events.artists.index', [$paket['org']->slug, $paket['event']->slug]))
+        ->assertOk()
+        ->assertSeeInOrder(['Band BBB Pagi', 'Band CCC Siang', 'Band AAA Dini', 'Band DDD Tanpa Jadwal'], false);
+
+    expect($dini->id)->not->toBeNull()
+        ->and($pagi->id)->not->toBeNull()
+        ->and($siang->id)->not->toBeNull();
+});

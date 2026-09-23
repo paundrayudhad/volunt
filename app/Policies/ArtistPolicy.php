@@ -31,10 +31,4 @@ class ArtistPolicy
             && $user->belongsToOrganization($event->organization_id)
             && $user->can('artist.manage');
     }
-
-    public function liaise(User $user, Artist $artis): bool
-    {
-        return $artis->liaisons()->where('user_id', $user->id)->exists()
-            && $user->can('artist.liaise');
-    }
 }

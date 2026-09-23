@@ -44,7 +44,10 @@ return new class extends Migration
      * Mencabut artist.manage dari semua yang kini bukan owner aktif, dan
      * artist.liaise hanya dari yang kini BUKAN volunteer-accepted DAN bukan
      * owner aktif — hak liaise sah milik volunteer diterima (spec §1) dan
-     * owner tidak pernah dicabut.
+     * owner tidak pernah dicabut. `artist.read` tidak pernah di-grant/di-revoke
+     * migrasi ini (spec §Backfill hanya manage+liaise), sehingga rollback tidak
+     * menyentuhnya — staff yang diberi `artist.read` manual mempertahankannya
+     * (asimetri sadar, konsisten dengan 5B).
      */
     public function down(): void
     {

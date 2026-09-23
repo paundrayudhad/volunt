@@ -95,7 +95,7 @@
                                 @foreach ($artist->liaisons as $row)
                                     <li class="flex flex-wrap items-center gap-2">
                                         <span>{{ $row->user?->name ?? '—' }}</span>
-                                        <form method="POST" action="{{ route('organizer.events.artists.liaisons.release', [$org->slug, $event->slug, $row->id]) }}">
+                                        <form method="POST" action="{{ route('organizer.events.artists.liaisons.release', [$org->slug, $event->slug, $artist->id, $row->id]) }}">
                                             @csrf
                                             <x-danger-button>Lepas LO</x-danger-button>
                                         </form>

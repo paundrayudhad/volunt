@@ -211,11 +211,21 @@ erDiagram
 
 ### Modul Event Musik
 
-- **artists**: `event_id`, `name`, `arrival_at`, `departure_at`, `venue`,
-  `transport` (jsonb), `requirements` (jsonb), `status`.
-- **artist_liaisons**: `artist_id`, `user_id` (liaison), `note`.
-  Unique `(artist_id, user_id)`. Akses dibatasi policy
+- **artists**: `event_id`, `name`, `genre` (nullable), `stage` (nullable),
+  `scheduled_at` (nullable), `duration_minutes` (nullable),
+  `performance_order` (nullable), `contact_name`/`contact_phone` (nullable),
+  `rider_text` (nullable), `rider_fulfilled` (bool default false), `status`
+  (check: scheduled, soundcheck, performing, done, cancelled; default
+  scheduled), `attendance` (check: expected, arrived, no_show; default
+  expected), soft deletes. Index: `(event_id, scheduled_at)`,
+  `(event_id, status)`.
+- **artist_liaisons**: `artist_id`, `user_id` (liaison), soft deletes
+  (release = soft-delete). **Unique parsial** `(artist_id, user_id)
+  WHERE deleted_at IS NULL`; index `(user_id)`. Akses dibatasi policy
   (liaison ter-assign + staff ber-permission).
+- **artist_status_histories**: append-only (perubahan status/attendance
+  artis, aktor + catatan).
+- **artist_notes**: append-only (catatan bebas pada artis, penulis + isi).
 - **incidents**: `event_id`, `category` (check: medical, security, crowd,
   technical, lost_found, other), `priority` (check: low–critical),
   `location`, `description`, `attachment_path`, `reporter_id → users`,
