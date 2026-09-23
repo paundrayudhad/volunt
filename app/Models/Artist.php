@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -60,7 +61,7 @@ class Artist extends Model
         return $this->hasMany(ArtistNote::class);
     }
 
-    public function endsAt(): ?\Carbon\CarbonInterface
+    public function endsAt(): ?CarbonInterface
     {
         if ($this->scheduled_at === null) {
             return null;
