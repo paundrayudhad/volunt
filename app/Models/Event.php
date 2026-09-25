@@ -79,6 +79,12 @@ class Event extends Model
         return $this->hasMany(Registration::class);
     }
 
+    /** @return HasMany<EventInvitation, $this> */
+    public function invitations(): HasMany
+    {
+        return $this->hasMany(EventInvitation::class);
+    }
+
     /** @return HasMany<Assignment, $this> */
     public function assignments(): HasMany
     {

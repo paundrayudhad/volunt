@@ -23,6 +23,7 @@ use App\Http\Controllers\Organizer\RegistrationController as OrganizerRegistrati
 use App\Http\Controllers\Organizer\RoleController;
 use App\Http\Controllers\Organizer\ShiftController;
 use App\Http\Controllers\OrganizerArtistController;
+use App\Http\Controllers\OrganizerTalentController;
 use App\Http\Controllers\PublicCertificateController;
 use App\Http\Controllers\PublicEventController;
 use App\Http\Controllers\Volunteer\AnnouncementController as VolunteerAnnouncementController;
@@ -32,6 +33,7 @@ use App\Http\Controllers\Volunteer\IncidentController as VolunteerIncidentContro
 use App\Http\Controllers\Volunteer\LostFoundController as VolunteerLostFoundController;
 use App\Http\Controllers\Volunteer\NotificationController as VolunteerNotificationController;
 use App\Http\Controllers\Volunteer\ScheduleController as VolunteerScheduleController;
+use App\Http\Controllers\VolunteerInvitationController;
 use App\Http\Controllers\VolunteerLiaisonController;
 use App\Http\Controllers\VolunteerProfileController;
 use App\Http\Controllers\VolunteerRegistrationController;
@@ -73,6 +75,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('invitations.accept');
     Route::post('invitations/{invitation}/decline', [InvitationController::class, 'decline'])
         ->name('invitations.decline');
+
+    Route::get('my/invitations', [VolunteerInvitationController::class, 'index'])
+        ->name('my.invitations.index');
+    Route::post('my/invitations/{invitation}/respond', [VolunteerInvitationController::class, 'respond'])
+        ->middleware('throttle:30,1')
+        ->name('my.invitations.respond');
 
     Route::get('registrations', [VolunteerRegistrationController::class, 'index'])
         ->name('registrations.index');
@@ -151,11 +159,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('members/{member}', [MemberController::class, 'update'])->name('members.update');
         Route::delete('members/{member}', [MemberController::class, 'destroy'])->name('members.destroy');
 
+        Route::get('talent', [OrganizerTalentController::class, 'index'])->name('talent.index');
+        Route::get('talent/{user}', [OrganizerTalentController::class, 'show'])->name('talent.show');
+
         Route::prefix('events')->name('events.')->group(function () {
             Route::get('/', [EventController::class, 'index'])->name('index');
             Route::get('create', [EventController::class, 'create'])->name('create');
             Route::post('/', [EventController::class, 'store'])->name('store');
             Route::prefix('{event}')->group(function () {
+                Route::post('invitations', [OrganizerTalentController::class, 'invite'])
+                    ->middleware('throttle:30,1')
+                    ->name('talent.invite');
+                Route::delete('invitations/{invitation}', [OrganizerTalentController::class, 'cancel'])
+                    ->name('talent.invitation.cancel');
                 Route::get('/', [EventController::class, 'show'])->name('show');
                 Route::get('edit', [EventController::class, 'edit'])->name('edit');
                 Route::patch('/', [EventController::class, 'update'])->name('update');

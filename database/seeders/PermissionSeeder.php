@@ -47,6 +47,8 @@ class PermissionSeeder extends Seeder
         'artist.manage',
         'artist.liaise',
         'artist.read',
+        'talent.search',
+        'talent.invite',
     ];
 
     public function run(): void

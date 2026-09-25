@@ -33,4 +33,22 @@ class OrganizationPolicy
     {
         return $user->hasRole('super_admin');
     }
+
+    public function searchTalent(User $user, Organization $org): bool
+    {
+        return $user->belongsToOrganization($org->id)
+            && $user->can('talent.search');
+    }
+
+    public function viewTalent(User $user, Organization $org): bool
+    {
+        return $user->belongsToOrganization($org->id)
+            && $user->can('talent.search');
+    }
+
+    public function inviteTalent(User $user, Organization $org): bool
+    {
+        return $user->belongsToOrganization($org->id)
+            && $user->can('talent.invite');
+    }
 }
