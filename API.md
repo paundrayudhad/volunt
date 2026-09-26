@@ -1,85 +1,65 @@
 # API
 
-Status: **kontrak desain**. API dibangun setelah fondasi web (Phase 1–4)
-stabil. Sanctum diadopsi saat itu (YAGNI sampai sini). Dokumen ini mengunci
-struktur, konvensi, dan keamanan agar implementasi tinggal mengikuti.
+Status: **Diimplementasikan (Phase 8 - Core Volunteer & Public REST API)**.
 
-## 1. Struktur Endpoint
+API dibangun di atas arsitektur stateless dengan otentikasi **Laravel Sanctum** Bearer Token untuk endpoint privat dan Named Rate Limiters untuk seluruh rute.
+
+## 1. Struktur Endpoint Aktif (`/api/v1/*`)
 
 ```text
-/api/auth/*                         # login, logout, refresh, me
-/api/organizations/*                # profil org (scoped membership)
-/api/events/*                       # public list/detail + scoped manage
-/api/events/{event}/divisions/*
-/api/events/{event}/roles/*
-/api/events/{event}/shifts/*
-/api/events/{event}/registrations/*
-/api/events/{event}/assignments/*
-/api/events/{event}/attendance/*
-/api/notifications/*                # milik sendiri
-/api/reports/*                      # event-scoped, permission report.export
-/api/certificates/verify/{no}       # publik, data minimal
-/api/admin/*                        # super_admin only
+/api/v1/ping                           # Health check / ping
+/api/v1/auth/login                     # Login & issue Bearer token (throttle:auth, 5/min)
+/api/v1/auth/me                        # Profil user aktif (auth:sanctum)
+/api/v1/auth/logout                    # Revoke current token (auth:sanctum)
+
+/api/v1/events                         # Public event catalog (throttle:public-api, 60/min)
+/api/v1/events/{slug}                  # Public event detail + roles & shifts (throttle:public-api)
+
+/api/v1/events/{slug}/register         # Submit volunteer registration (auth:sanctum, throttle:registration-submit, Idempotency-Key)
+/api/v1/my/registrations               # Riwayat pendaftaran pribadi (auth:sanctum)
+/api/v1/my/registrations/{id}/withdraw # Penarikan diri dari pendaftaran (auth:sanctum)
+
+/api/v1/certificates/verify/{no}       # Verifikasi publik sertifikat tanpa PII (throttle:public-api, 60/min)
 ```
 
-`{event}` selalu di-resolve dalam scope organisasi pemanggil; di luar
-scope → 404. Tidak ada endpoint yang menerima `organization_id`/
-`event_id` dari body sebagai sumber kebenaran — scope berasal dari
-server context (token + path binding).
+## 2. Keamanan & Rate Limiting
 
-## 2. Auth & Keamanan per Endpoint
+- **`throttle:auth`**: 5 request per menit per IP + email untuk mencegah brute force pada `/api/v1/auth/login`.
+- **`throttle:public-api`**: 60 request per menit per IP untuk katalog event publik dan verifikasi sertifikat.
+- **`throttle:registration-submit`**: 10 submit per menit per user/IP pada pendaftaran relawan.
+- **Fail-Closed Multi-Tenant & Privacy Isolation**:
+  - Event non-publik (status `draft`) mengembalikan **404 Not Found**.
+  - Akses atau penarikan pendaftaran milik user lain mengembalikan **404 Not Found**.
+  - Verifikasi sertifikat publik hanya mengembalikan data publik (Nomor, Nama Penerima, Event, Organisasi, Role) dan tidak membocorkan PII (email/telepon).
 
-- Semua endpoint (kecuali list/detail publik + verifikasi sertifikat):
-  `auth:sanctum` + `abilities` minimal + Policy + throttle.
-- Throttle default `60/min`; sensitif lebih ketat: auth `5/mnt`,
-  registration submit `10/mnt`, QR scan `30/mnt`, export `5/jam`,
-  broadcast `5/jam`.
-- Validasi via Form Request; pagination wajib (`per_page` max 100);
-  tanpa `SELECT *` — resource hanya memuat field yang dibutuhkan
-  (public vs private resource terpisah).
-- Idempotency: `Idempotency-Key` header pada POST registration,
-  check-in/out, export. Key sama → respons record existing (200),
-  bukan duplikat.
+## 3. Format Response Standar
 
-## 3. Konvensi Response
-
-Sukses list:
-
+### Sukses List
 ```json
-{ "data": [...], "meta": { "current_page": 1, "total": 250 } }
+{
+  "data": [ ... ],
+  "links": { ... },
+  "meta": {
+    "current_page": 1,
+    "per_page": 15,
+    "total": 10
+  }
+}
 ```
 
-Sukses mutasi: `201 + resource` (create), `200 + resource` (update),
-`200 + { "message": "..." }` (aksi). Error aman:
+### Sukses Detail & Mutasi
+```json
+{
+  "data": { ... },
+  "message": "Pendaftaran berhasil diajukan."
+}
+```
 
-| Kode | Arti |
-|---|---|
-| 400 | Bad request (validasi lolos tapi bisnis menolak — gunakan 422 bila validasi) |
-| 401 | Unauthenticated |
-| 403 | Forbidden (dalam scope tapi tak berhak) |
-| 404 | Not found / di luar scope (tidak membocorkan) |
-| 409 | Konflik (duplikat, replay QR, quota penuh) |
-| 422 | Validation error (`{ "errors": { "field": [...] } }`) |
-| 429 | Rate limited |
-| 500 | Generic + `error_id` (tanpa trace/SQL/path/secret) |
-
-## 4. Contoh Kontrak (ringkas)
-
-- `GET /api/events?category=&city=&date=&q=` → publik, paginated,
-  field publik saja.
-- `POST /api/events/{event}/registrations` → auth volunteer,
-  body: `role_id` + `answers[]`; respons 201 (Pending) / 409 (duplikat).
-- `POST /api/events/{event}/registrations/{id}/accept` → auth staff
-  + `registration.review`; 200 / 409 (quota penuh → sarankan waitlist).
-- `POST /api/events/{event}/attendance/check-in` → auth volunteer
-  (QR token) atau staff + `attendance.manage`; validasi time window.
-- `GET /api/certificates/verify/{no}` → publik: event, nama, role,
-  tanggal selesai. Tanpa kontak/data privat.
-- `POST /api/events/{event}/exports` → staff + `report.export`;
-  respons 202 + job ID; unduh setelah job selesai (link signed, expiry).
-
-## 5. Versioning & Evolusi
-
-Prefix `/api/v1/` saat rilis pertama; breaking change → `/v2/` +
-deprecation window. Web/Livewire dan API memakai service yang sama —
-tidak ada duplikasi business logic.
+### Error Matrix
+| Kode | Kondisi | Contoh Payload |
+|---|---|---|
+| 401 | Kredensial login salah / unauthenticated | `{"message": "Kredensial tidak cocok dengan catatan kami."}` |
+| 404 | Resource tidak ditemukan / di luar otorisasi | `{"message": "Pendaftaran tidak ditemukan."}` |
+| 409 | Duplikat pendaftaran / kuota penuh | `{"message": "Anda sudah memiliki pendaftaran aktif pada event ini."}` |
+| 422 | Kesalahan validasi | `{"message": "Data tidak valid.", "errors": { ... }}` |
+| 429 | Rate limit terlampaui | `{"message": "Too Many Attempts."}` |
