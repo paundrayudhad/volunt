@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\AnalyticsController as AdminAnalyticsController;
+use App\Http\Controllers\Admin\CertificateController as AdminCertificateController;
 use App\Http\Controllers\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Admin\LogController as AdminLogController;
 use App\Http\Controllers\Admin\OrganizationController as AdminOrganizationController;
@@ -13,11 +15,14 @@ use App\Http\Controllers\Organizer\AttendanceController as OrganizerAttendanceCo
 use App\Http\Controllers\Organizer\CertificateController as OrganizerCertificateController;
 use App\Http\Controllers\Organizer\CustomFieldController;
 use App\Http\Controllers\Organizer\DivisionController;
+use App\Http\Controllers\Organizer\EventAnalyticsController as OrganizerEventAnalyticsController;
 use App\Http\Controllers\Organizer\EventController;
+use App\Http\Controllers\Organizer\EventExportController as OrganizerEventExportController;
 use App\Http\Controllers\Organizer\IncidentController as OrganizerIncidentController;
 use App\Http\Controllers\Organizer\InvitationController;
 use App\Http\Controllers\Organizer\LostFoundController as OrganizerLostFoundController;
 use App\Http\Controllers\Organizer\MemberController;
+use App\Http\Controllers\Organizer\OrganizationAnalyticsController as OrganizerOrganizationAnalyticsController;
 use App\Http\Controllers\Organizer\OrganizationController;
 use App\Http\Controllers\Organizer\RegistrationController as OrganizerRegistrationController;
 use App\Http\Controllers\Organizer\RoleController;
@@ -161,6 +166,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('talent', [OrganizerTalentController::class, 'index'])->name('talent.index');
         Route::get('talent/{user}', [OrganizerTalentController::class, 'show'])->name('talent.show');
+        Route::get('analytics', [OrganizerOrganizationAnalyticsController::class, 'index'])->name('analytics.index');
 
         Route::prefix('events')->name('events.')->group(function () {
             Route::get('/', [EventController::class, 'index'])->name('index');
@@ -179,6 +185,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 Route::post('transition', [EventController::class, 'transition'])
                     ->middleware('password.confirm')
                     ->name('transition');
+
+                Route::get('analytics', [OrganizerEventAnalyticsController::class, 'index'])->name('analytics.index');
+                Route::get('export/{dataset}', [OrganizerEventExportController::class, 'export'])
+                    ->middleware('throttle:10,1')
+                    ->name('export');
 
                 Route::prefix('divisions')->name('divisions.')->group(function () {
                     Route::get('/', [DivisionController::class, 'index'])->name('index');
@@ -371,6 +382,8 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
     Route::get('registrations/{registrationAdmin}', [AdminRegistrationController::class, 'show'])->name('registrations.show');
 
     Route::get('logs', [AdminLogController::class, 'index'])->name('logs.index');
+    Route::get('analytics', [AdminAnalyticsController::class, 'index'])->name('analytics.index');
+    Route::get('certificates', [AdminCertificateController::class, 'index'])->name('certificates.index');
 });
 
 require __DIR__.'/auth.php';

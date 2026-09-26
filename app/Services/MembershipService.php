@@ -52,6 +52,8 @@ class MembershipService
         'artist.read',
         'talent.search',
         'talent.invite',
+        'analytics.view',
+        'analytics.export',
     ];
 
     public const OWNER_PERMS = self::GRANULAR;

@@ -37,14 +37,17 @@
                     </dl>
 
                     <h3 class="mt-6 font-medium">Riwayat verifikasi</h3>
-                    @if ($certificate->verifications->isEmpty())
+                    @if ($verifications->isEmpty())
                         <p class="mt-2 text-sm text-gray-500">Belum ada verifikasi untuk sertifikat ini.</p>
                     @else
                         <ul class="mt-2 divide-y divide-gray-200 dark:divide-gray-700 text-sm">
-                            @foreach ($certificate->verifications as $riwayat)
+                            @foreach ($verifications as $riwayat)
                                 <li class="py-2">{{ $riwayat->verified_at?->format('d M Y H:i') ?? '—' }}{{ $riwayat->ip ? ' — '.$riwayat->ip : '' }}</li>
                             @endforeach
                         </ul>
+                        <div class="mt-4">
+                            {{ $verifications->links() }}
+                        </div>
                     @endif
 
                     @if (! $certificate->isRevoked())

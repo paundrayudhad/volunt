@@ -10,6 +10,7 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Services\CertificateService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -18,21 +19,30 @@ class CertificateController extends Controller
 {
     public function __construct(private CertificateService $sertifikat) {}
 
-    public function index(Organization $organization, Event $event): View
+    public function index(Request $request, Organization $organization, Event $event): View
     {
         Gate::authorize('viewAny', [Certificate::class, $event]);
 
-        $items = Certificate::where('event_id', $event->id)
+        $status = $request->query('status');
+
+        $query = Certificate::where('event_id', $event->id)
             ->with('user')
             ->orderByDesc('issued_at')
-            ->orderByDesc('id')
-            ->paginate(15)
-            ->withQueryString();
+            ->orderByDesc('id');
+
+        if ($status === 'valid') {
+            $query->whereNull('revoked_at');
+        } elseif ($status === 'revoked') {
+            $query->whereNotNull('revoked_at');
+        }
+
+        $items = $query->paginate(15)->withQueryString();
 
         return view('organizer.events.certificates.index', [
             'org' => $organization,
             'event' => $event,
             'certificates' => $items,
+            'selectedStatus' => (string) $status,
             'diterbitkan' => Certificate::where('event_id', $event->id)->whereNull('revoked_at')->count(),
             'ambang' => $this->sertifikat->effectiveThreshold($event),
         ]);
@@ -42,12 +52,17 @@ class CertificateController extends Controller
     {
         Gate::authorize('view', $sertifikat);
 
-        $sertifikat->load(['user', 'verifications' => fn ($query) => $query->orderByDesc('verified_at')]);
+        $sertifikat->load('user');
+        $verifications = $sertifikat->verifications()
+            ->orderByDesc('verified_at')
+            ->paginate(15)
+            ->withQueryString();
 
         return view('organizer.events.certificates.show', [
             'org' => $organization,
             'event' => $event,
             'certificate' => $sertifikat,
+            'verifications' => $verifications,
         ]);
     }
 

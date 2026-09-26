@@ -303,8 +303,8 @@ it('sertTesOwnerMengelolaSertifikat', function (): void {
         ->and($tugas->refresh()->status)->toBe('completed');
 });
 
-it('sertTesAdminTanpaRuteCertificate', function (): void {
-    expect(Route::has('admin.certificates.index'))->toBeFalse()
+it('sertTesAdminTanpaRuteMutasiCertificate', function (): void {
+    expect(Route::has('admin.certificates.index'))->toBeTrue()
         ->and(Route::has('admin.certificates.issue'))->toBeFalse()
         ->and(Route::has('admin.certificates.show'))->toBeFalse()
         ->and(Route::has('admin.certificates.revoke'))->toBeFalse()

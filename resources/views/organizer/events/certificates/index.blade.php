@@ -26,7 +26,18 @@
                 <div class="p-6 text-gray-900 dark:text-gray-100">
                     <a href="{{ route('organizer.events.show', [$org->slug, $event->slug]) }}" class="underline text-sm">Kembali ke event</a>
 
-                    <p class="mt-4 text-sm text-gray-500">Ambang kehadiran efektif: {{ $ambang }}% — Diterbitkan: {{ $diterbitkan }}</p>
+                    <div class="mt-4 flex flex-wrap items-center justify-between gap-4">
+                        <p class="text-sm text-gray-500">Ambang kehadiran efektif: {{ $ambang }}% — Diterbitkan: {{ $diterbitkan }}</p>
+
+                        <form method="GET" action="{{ route('organizer.events.certificates.index', [$org->slug, $event->slug]) }}" class="flex items-center gap-2">
+                            <label for="filter-status" class="text-xs text-gray-500">Status:</label>
+                            <select id="filter-status" name="status" onchange="this.form.submit()" class="text-sm rounded border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+                                <option value="" {{ $selectedStatus === '' ? 'selected' : '' }}>Semua</option>
+                                <option value="valid" {{ $selectedStatus === 'valid' ? 'selected' : '' }}>Valid / Aktif</option>
+                                <option value="revoked" {{ $selectedStatus === 'revoked' ? 'selected' : '' }}>Dicabut</option>
+                            </select>
+                        </form>
+                    </div>
 
                     @can('issue', [\App\Models\Certificate::class, $event])
                         <form method="POST" action="{{ route('organizer.events.certificates.issue', [$org->slug, $event->slug]) }}" class="mt-4 flex items-end gap-3">
