@@ -42,12 +42,13 @@ via environment/secret manager — tidak pernah di-commit. Sediakan
 
 1. Nginx + PHP-FPM 8.4 + PostgreSQL 16 (managed lebih baik bila ada).
 2. TLS via Cloudflare (Full strict) + HSTS; security headers (§6).
-3. Deploy: `composer install --no-dev`, `npm run build`,
+3. Pre-flight check: jalankan `php artisan app:check-production` untuk verifikasi otomatis kesiapan environment.
+4. Deploy: `composer install --no-dev`, `npm run build`,
    `php artisan migrate --force`, cache config/route/view,
    `storage:link`, permission `storage/` + `bootstrap/cache/`.
-4. Supervisor/systemd untuk `queue:work` + `schedule:run`;
+5. Supervisor/systemd untuk `queue:work` + `schedule:run`;
    logrotate; firewall hanya 80/443 (+ SSH key-only).
-5. Migration selalu reversibel bila memungkinkan, tested di staging,
+6. Migration selalu reversibel bila memungkinkan, tested di staging,
    backward-compatible untuk rolling update; tanpa edit manual DB prod
    tanpa migration terdokumentasi.
 
@@ -63,14 +64,25 @@ via environment/secret manager — tidak pernah di-commit. Sediakan
 Tanpa sinyal di atas: jangan tambah. Abstraksi Laravel membuat
 perpindahan tanpa mengubah business logic.
 
-## 6. Security Headers (Nginx/Laravel, produksi)
+## 6. Security Headers & Protection (Laravel Middleware)
 
-HSTS (`max-age` besar + preload setelah validasi), CSP ketat
-(`default-src 'self'` + allowlist asset), `X-Content-Type-Options:
-nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
-`Permissions-Policy` minimal, `X-Frame-Options: DENY`, cookie Secure.
+Middleware `App\Http\Middleware\SecurityHeaders` terdaftar secara global dan menetapkan:
+- **`X-Frame-Options: DENY`**: Mencegah clickjacking pada seluruh halaman.
+- **`X-Content-Type-Options: nosniff`**: Mencegah MIME-type sniffing.
+- **`Referrer-Policy: strict-origin-when-cross-origin`**: Melindungi privasi URL referer.
+- **`Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`**: Menonaktifkan API browser sensitif.
+- **`Content-Security-Policy (CSP)`**: Kebijakan CSP ketat membatasi sumber script, style, font, dan frame-ancestors.
+- **`Strict-Transport-Security (HSTS)`**: Otomatis aktif saat request HTTPS atau di environment `APP_ENV=production` (`max-age=31536000; includeSubDomains; preload`).
 
-## 7. Backup & Recovery
+## 7. Rate Limiting Terpadu (Named Rate Limiters)
+
+Sistem menggunakan named rate limiters yang dikonfigurasi di `AppServiceProvider`:
+- **`auth`**: 5 percobaan per menit per IP + email untuk mitigasi brute force pada autentikasi.
+- **`registration-submit`**: 10 submit per menit per user/IP untuk mencegah spam form pendaftaran.
+- **`exports`**: 10 ekspor per menit per user/IP untuk mencegah resource exhaustion pada pengunduhan CSV/XLSX.
+- **`public-api`**: 60 request per menit per IP untuk katalog event publik dan verifikasi sertifikat.
+
+## 8. Backup & Recovery
 
 - `pg_dump` terjadwal (harian, full + WAL bila managed), retensi:
   harian 7, mingguan 4, bulanan 6. Backup file storage (snapshot /
@@ -80,20 +92,24 @@ nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
 - Skema retensi data aplikasi (registration, attendance, log, file)
   configurable; hard delete hanya via artisan teraudit oleh Super Admin.
 
-## 8. Observability
+## 9. Observability
 
 Request ID per request (middleware + log context), application log,
 `audit_logs` + `security_logs`, error tracking (mis. Sentry/Flare),
 queue monitoring (gagal + retry), slow-query log PostgreSQL.
 Tanpa secret di log mana pun.
 
-## 9. Production Hardening Checklist (wajib sebelum go-live)
+## 10. Pre-Flight Production Checklist (`app:check-production`)
 
-- [ ] `APP_DEBUG=false`, error generik + error ID
-- [ ] HTTPS + HSTS + headers §6 + cookie Secure/HttpOnly/SameSite
-- [ ] Rate limit aktif semua endpoint sensitif
-- [ ] `composer audit` + `npm audit` bersih (critical/high)
-- [ ] Pint + PHPStan hijau; seluruh suite TESTING.md hijau
-- [ ] Backup + restore test lolos; runbook insiden tersedia
-- [ ] `.env` tidak di repo; secrets via manager; `.env.example` lengkap
-- [ ] Dependency tak terpakai dibuang; lock file di-commit
+Jalankan artisan command berikut sebelum deployment:
+
+```bash
+php artisan app:check-production
+```
+
+Checklist pemeriksaan otomatis mencakup:
+- [x] `APP_DEBUG=false` saat di environment produksi
+- [x] `APP_KEY` valid dan terkonfigurasi
+- [x] Koneksi PostgreSQL aktif dan sehat
+- [x] Direktori `storage/` dan `bootstrap/cache/` dapat ditulis (`is_writable`)
+- [x] `SESSION_SECURE_COOKIE=true` untuk proteksi cookie HTTPS
