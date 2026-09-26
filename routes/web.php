@@ -45,16 +45,16 @@ use App\Http\Controllers\VolunteerRegistrationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('verify/certificate/{nomor}', [PublicCertificateController::class, 'show'])
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:public-api')
     ->name('certificates.verify');
 
 Route::view('/', 'welcome');
 
 Route::get('events', [PublicEventController::class, 'index'])
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:public-api')
     ->name('events.index');
 Route::get('events/{eventPublic}', [PublicEventController::class, 'show'])
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:public-api')
     ->name('events.show');
 
 Route::view('dashboard', 'dashboard')
@@ -94,7 +94,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('events/{eventPublic}/register', [VolunteerRegistrationController::class, 'create'])
         ->name('registrations.create');
     Route::post('events/{eventPublic}/register', [VolunteerRegistrationController::class, 'store'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:registration-submit')
         ->name('registrations.store');
     Route::post('registrations/{registrationVol}/withdraw', [VolunteerRegistrationController::class, 'withdraw'])
         ->name('registrations.withdraw');
@@ -188,7 +188,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
                 Route::get('analytics', [OrganizerEventAnalyticsController::class, 'index'])->name('analytics.index');
                 Route::get('export/{dataset}', [OrganizerEventExportController::class, 'export'])
-                    ->middleware('throttle:10,1')
+                    ->middleware('throttle:exports')
                     ->name('export');
 
                 Route::prefix('divisions')->name('divisions.')->group(function () {

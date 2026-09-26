@@ -39,8 +39,11 @@ use App\Policies\ShiftPolicy;
 use App\Services\SecurityService;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Lockout;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -77,6 +80,24 @@ class AppServiceProvider extends ServiceProvider
             app(SecurityService::class)->record(null, 'account_locked', [
                 'ip' => request()->ip(),
             ]);
+        });
+
+        RateLimiter::for('auth', function (Request $request) {
+            $email = (string) $request->input('email');
+
+            return Limit::perMinute(5)->by($request->ip().'|'.$email);
+        });
+
+        RateLimiter::for('registration-submit', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('exports', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('public-api', function (Request $request) {
+            return Limit::perMinute(60)->by($request->ip());
         });
 
         Gate::policy(Organization::class, OrganizationPolicy::class);
